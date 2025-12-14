@@ -5,6 +5,7 @@
 #include <math.h>
 #include <cuda_runtime.h>
 #include "read_utils.h"
+#include "dat.cuh"
 
 #define CUDA_CHECK(call)                                                      \
     do {                                                                      \
@@ -17,17 +18,35 @@
     } while (0)
 
 
-__global__
-void d_baseline_dat_forward(const float *N, int B, int C, int H, int W) {
-    int col = blockIdx.x * blockDim.x + threadIdx.x;
-    int row = blockIdx.y * blockDim.y + threadIdx.y;
-
-    if (row >= H || col >= W) return;
-
-    //printf("col: %d, row: %d\n", col, row);
-}
-
 typedef void (*kernel_ptr)(const float*, int, int, int, int);
+
+float run_kernel_once(const char* label,
+                       kernel_ptr kernel,
+                       dim3 grid, dim3 block,
+                       const float* d_N,
+                       int B, int C, int H, int W)
+{
+    cudaEvent_t start, stop;
+    float total_ms = 0.0f;
+
+    CUDA_CHECK(cudaDeviceSynchronize());
+
+    CUDA_CHECK(cudaEventCreate(&start));
+    CUDA_CHECK(cudaEventCreate(&stop));
+
+    CUDA_CHECK(cudaEventRecord(start));
+    kernel<<<grid, block>>>(d_N, B, C, H, W);
+    CUDA_CHECK(cudaEventRecord(stop));
+
+    CUDA_CHECK(cudaEventSynchronize(stop));
+    CUDA_CHECK(cudaEventElapsedTime(&total_ms, start, stop));
+
+    CUDA_CHECK(cudaEventDestroy(start));
+    CUDA_CHECK(cudaEventDestroy(stop));
+
+    printf("%s: %.3f ms\n", label, total_ms);
+    return total_ms;
+}
 
 float benchmark_kernel(const char* label,
                        kernel_ptr kernel,
@@ -98,12 +117,18 @@ int main(void)
               (H_x + block.y - 1) / block.y);
 
 
-    benchmark_kernel("d_baseline_dat_forward",
+    run_kernel_once("d_baseline_dat_forward",
                     d_baseline_dat_forward,
                     1, 1,
                     d_X,
-                    B_x, C_x, H_x, W_x,
-                    3, 20);
+                    B_x, C_x, H_x, W_x);
+
+    //benchmark_kernel("d_baseline_dat_forward",
+    //                d_baseline_dat_forward,
+    //                1, 1,
+    //                d_X,
+    //                B_x, C_x, H_x, W_x,
+    //                3, 20);
 
     CUDA_CHECK(cudaFree(d_X));
     free(h_X);

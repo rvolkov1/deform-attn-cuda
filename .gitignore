@@ -1,3 +1,5 @@
 dat_torch/DAT_pytorch
 *__pycache__
 *.o
+dat_cuda/exe
+dat_cuda/*.o
