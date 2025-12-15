@@ -7,6 +7,10 @@ import time
 
 from dat import DAttentionBaseline
 
+torch.manual_seed(42)
+torch.cuda.manual_seed_all(42)
+torch.use_deterministic_algorithms(True)
+
 torch.set_printoptions(profile="full")
 np.set_printoptions(threshold=sys.maxsize)
 
@@ -36,11 +40,19 @@ def save_testcase(x, y, testcase_no=1):
   """
 
   ref_txt = f"""
-  Tensor ref
+  Tensor pos
   shape
   {list(y[2].shape)}
   mat
   {str(y[2].flatten().detach().numpy())}
+  """
+
+  rpe_table_txt = f"""
+  Tensor ref
+  shape
+  {list(y[3].shape)}
+  mat
+  {str(y[3].flatten().detach().numpy())}
   """
 
   dirname = f"testcases/test_{testcase_no}"
@@ -58,6 +70,9 @@ def save_testcase(x, y, testcase_no=1):
 
   with open(f"{dirname}/ref.txt", "w") as f2:
       f2.write(ref_txt)
+
+  with open(f"{dirname}/rpe_table.txt", "w") as f2:
+      f2.write(rpe_table_txt)
   
 
 B = 1
@@ -73,18 +88,10 @@ attn = DAttentionBaseline(
     n_heads=4,
     n_head_channels=C // 4,
     n_groups=4,
-    attn_drop=0.0,
-    proj_drop=0.0,
     stride=1,
-    offset_range_factor=1.0,
-    use_pe=True,
-    dwc_pe=False,
-    no_off=False,
-    fixed_pe=False,
     ksize=3,
-    log_cpb=False,
+    rpe_table=None
 ).to(device)
-
 
 x = torch.randn(B, C, H, W, device=device)
 
