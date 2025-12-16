@@ -218,33 +218,36 @@ int main(void)
 
     // PROJ OUT
     float *d_proj_out_weight;
-    CUDA_CHECK(cudaMalloc(&d_proj_out_weight, proj_out_weight * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_proj_out_weight, proj_out_weight_size * sizeof(float)));
     CUDA_CHECK(cudaMemcpy(d_proj_out_weight, proj_out_weight, proj_out_weight_size * sizeof(float), cudaMemcpyHostToDevice));
 
-    float *d_proj_v_bias;
+    float *d_proj_out_bias;
     CUDA_CHECK(cudaMalloc(&d_proj_out_bias, proj_out_bias_size * sizeof(float)));
     CUDA_CHECK(cudaMemcpy(d_proj_out_bias, proj_out_bias, proj_out_bias_size * sizeof(float), cudaMemcpyHostToDevice));
-
-    cnpy::NpyArray proj_q_weight_obj = cnpy::npy_load("testcases/test_1/proj_q_weight.npy");
-    size_t proj_q_weight_size = 64 * 64 * 1 * 1;
-    float* proj_q_weight = proj_q_weight_obj.data<float>();
-
-    cnpy::NpyArray proj_q_bias_obj = cnpy::npy_load("testcases/test_1/proj_q_bias.npy");
-    size_t proj_q_bias_size = 64;
-    float* proj_q_bias = proj_q_bias_obj.data<float>();
-
-
 
     dim3 block(32, 32);
     dim3 grid((W_x + block.x - 1) / block.x,
               (H_x + block.y - 1) / block.y);
 
+    d_baseline_dat_forward<<<1, 1>>>(d_X, B_x, C_x, H_x, W_x,
+                                    d_conv_offset_0_weight,
+                                    d_conv_offset_1_weight,
+                                    d_conv_offset_1_bias,
+                                    d_conv_offset_3_weight,
+                                    d_proj_q_weight,
+                                    d_proj_q_bias,
+                                    d_proj_k_weight,
+                                    d_proj_k_bias,
+                                    d_proj_v_weight,
+                                    d_proj_v_bias,
+                                    d_proj_out_weight,
+                                    d_proj_out_bias);
 
-    run_kernel_once("d_baseline_dat_forward",
-                    d_baseline_dat_forward,
-                    1, 1,
-                    d_X,
-                    B_x, C_x, H_x, W_x);
+    //run_kernel_once("d_baseline_dat_forward",
+    //                d_baseline_dat_forward,
+    //                1, 1,
+    //                d_X,
+    //                B_x, C_x, H_x, W_x);
 
     //benchmark_kernel("d_baseline_dat_forward",
     //                d_baseline_dat_forward,
