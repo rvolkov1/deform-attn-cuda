@@ -229,7 +229,23 @@ int main(void)
     dim3 grid((W_x + block.x - 1) / block.x,
               (H_x + block.y - 1) / block.y);
 
-    d_baseline_dat_forward<<<1, 1>>>(d_X, B_x, C_x, H_x, W_x,
+    int q_size_h = H_x;
+    int q_size_w = W_x;
+    int kv_size_h = H_x;
+    int kv_size_w = W_x;
+    int n_heads = 4;
+    int n_head_channels = C_x / 4;
+    int n_groups = 4;
+    int stride = 1;
+    int ksize=3;
+
+    baseline_dat_forward<<<1, 1>>>(d_X, B_x, C_x, H_x, W_x,
+                                    q_size_h, q_size_w,
+                                    kv_size_h, kv_size_w,
+                                    n_heads, n_head_channels,
+                                    n_groups,
+                                    stride,
+                                    ksize,
                                     d_conv_offset_0_weight,
                                     d_conv_offset_1_weight,
                                     d_conv_offset_1_bias,
@@ -258,6 +274,19 @@ int main(void)
 
     CUDA_CHECK(cudaFree(d_X));
     free(h_X);
+
+    CUDA_CHECK(cudaFree(d_conv_offset_0_weight));
+    CUDA_CHECK(cudaFree(d_conv_offset_1_weight));
+    CUDA_CHECK(cudaFree(d_conv_offset_1_bias));
+    CUDA_CHECK(cudaFree(d_conv_offset_3_weight));
+    CUDA_CHECK(cudaFree(d_proj_q_weight));
+    CUDA_CHECK(cudaFree(d_proj_q_bias));
+    CUDA_CHECK(cudaFree(d_proj_k_weight));
+    CUDA_CHECK(cudaFree(d_proj_k_bias));
+    CUDA_CHECK(cudaFree(d_proj_v_weight));
+    CUDA_CHECK(cudaFree(d_proj_v_bias));
+    CUDA_CHECK(cudaFree(d_proj_out_weight));
+    CUDA_CHECK(cudaFree(d_proj_out_bias));
 
     CUDA_CHECK(cudaDeviceReset());
     return 0;

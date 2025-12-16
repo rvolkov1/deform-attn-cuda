@@ -118,6 +118,7 @@ class DAttentionBaseline(nn.Module):
         q = self.proj_q(x)
         q_off = einops.rearrange(q, 'b (g c) h w -> (b g) c h w', g=self.n_groups, c=self.n_group_channels)
         offset = self.conv_offset(q_off).contiguous()  # B * g 2 Hg Wg
+        print("offset size:", offset.size())
         Hk, Wk = offset.size(2), offset.size(3)
         n_sample = Hk * Wk
 
