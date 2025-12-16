@@ -27,6 +27,36 @@ __device__ void d_conv1x1_bias(
     }
 }
 
+//(sizeof(float) * B * H * W) is the size of the ref pointer
+void get_ref_points(float *ref, int Hk, int Wk, int B) {
+    for(int grid = 0; grid < B; grid++) {
+        int gridbase = grid * 2 * Hk * Wk;
+        for(int row = 0; row < Hk; row++) {
+            int rowbase = gridbase + 2 * row * Wk;
+            for(int col = 0; col < Wk; col++) {
+                int cellbase = rowbase + 2 * col;
+                q_grid[cellbase] = (row * 2.0 + 1)/ (Hk - 1) - 1.0;
+                q_grid[cellbase + 1] = (col * 2.0 + 1) / (Wk - 1) - 1.0;
+            }
+        }
+    }
+}
+
+//(sizeof(float) * B * H * W * g) is the size of the q_grid pointer
+void get_q_grid(float *q_grid, int H, int W, int B, int g) {
+    for(int grid = 0; grid < B * g; grid++) {
+        int gridbase = grid * 2 * H * W;
+        for(int row = 0; row < H; row++) {
+            int rowbase = gridbase + 2 * row * W;
+            for(int col = 0; col < W; col++) {
+                int cellbase = rowbase + 2 * col;
+                q_grid[cellbase] = row * 2.0 / (H - 1) - 1.0;
+                q_grid[cellbase + 1] = col * 2.0 / (W - 1) - 1.0;
+            }
+        }
+    }
+}
+
 __global__
 void baseline_dat_forward(const float *x, int B, int C, int H, int W,
                             int q_size_h, int q_size_w,
