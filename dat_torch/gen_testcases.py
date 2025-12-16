@@ -14,7 +14,48 @@ torch.use_deterministic_algorithms(True)
 torch.set_printoptions(profile="full")
 np.set_printoptions(threshold=sys.maxsize)
 
-def save_testcase(x, y, testcase_no=1):
+def save_weights_numpy(model, prefix):
+    # conv_offset layers
+    conv_offset0 = model.conv_offset[0]  # depthwise conv
+    conv_offset1 = model.conv_offset[1].norm  # LayerNormProxy
+    conv_offset3 = model.conv_offset[3]  # final conv in conv_offset
+
+    # Save depthwise conv weight
+    np.save(f"{prefix}/conv_offset0_weight.npy", conv_offset0.weight.detach().cpu().numpy())
+    print(f"{prefix}/conv_offset0_weight.npy", conv_offset0.weight.detach().cpu().numpy().shape)
+
+    # Save LayerNorm weight and bias
+    np.save(f"{prefix}/conv_offset1_weight.npy", conv_offset1.weight.detach().cpu().numpy())
+    np.save(f"{prefix}/conv_offset1_bias.npy", conv_offset1.bias.detach().cpu().numpy())
+
+    print(f"{prefix}/conv_offset1_weight.npy", conv_offset1.weight.detach().cpu().numpy().shape)
+    print(f"{prefix}/conv_offset1_bias.npy", conv_offset1.bias.detach().cpu().numpy().shape)
+
+    # Save conv_offset final conv weight
+    np.save(f"{prefix}/conv_offset3_weight.npy", conv_offset3.weight.detach().cpu().numpy())
+
+    print(f"{prefix}/conv_offset3_weight.npy", conv_offset3.weight.detach().cpu().numpy().shape)
+
+    # Save proj_q, proj_k, proj_v, proj_out weights and biases
+    for name, layer in [("proj_q", model.proj_q),
+                        ("proj_k", model.proj_k),
+                        ("proj_v", model.proj_v),
+                        ("proj_out", model.proj_out)]:
+        np.save(f"{prefix}/{name}_weight.npy", layer.weight.detach().cpu().numpy())
+        np.save(f"{prefix}/{name}_bias.npy", layer.bias.detach().cpu().numpy())
+
+        print(f"{prefix}/{name}_weight.npy", layer.weight.detach().cpu().numpy().shape)
+        print(f"{prefix}/{name}_bias.npy", layer.bias.detach().cpu().numpy().shape)
+
+    # Save rpe_table
+    if model.rpe_table is not None:
+        np.save(f"{prefix}/rpe_table.npy", model.rpe_table.detach().cpu().numpy())
+        print(f"{prefix}/rpe_table.npy", model.rpe_table.detach().cpu().numpy().shape)
+
+    print("All weights saved as .npy files.")
+
+
+def save_testcase(x, y, attn, testcase_no=1):
   x_txt = f"""
   Tensor x
   shape
@@ -112,6 +153,7 @@ def time_forward(model, x, iters=100):
 
 y, ms = time_forward(attn, x)
 
-save_testcase(x, y, testcase_no=1)
+save_testcase(x, y, attn, testcase_no=1)
+save_weights_numpy(attn, f"testcases/test_{1}")
 
 print(f"Forward Pass Time: {ms:.3f} ms/iter")

@@ -23,7 +23,7 @@ class DAttentionBaseline(nn.Module):
         self, q_size, kv_size, n_heads, n_head_channels, n_groups,
         stride, 
         ksize,
-        rpe_table
+        rpe_table=None
     ):
 
         super().__init__()
@@ -70,7 +70,7 @@ class DAttentionBaseline(nn.Module):
             kernel_size=1, stride=1, padding=0
         )
 
-        if rpe_table is not None:
+        if rpe_table is None:
           self.rpe_table = nn.Parameter(
               torch.zeros(self.n_heads, self.q_h * 2 - 1, self.q_w * 2 - 1)
           )

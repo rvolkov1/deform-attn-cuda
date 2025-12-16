@@ -8,7 +8,7 @@ import re
 
 torch.manual_seed(42)
 torch.cuda.manual_seed_all(42)
-torch.use_deterministic_algorithms(True)
+#torch.use_deterministic_algorithms(True)
 
 
 def parse_shape_line(line):
@@ -117,7 +117,7 @@ def time_forward(model, x, iters=100):
         y_pred = y[0]
 
 
-    print("torch.close", torch.allclose(y_pred, y_true, atol=1e-2, rtol=1e-2))
+    print("torch.close", torch.allclose(y_pred, y_true))
     return ((time.time() - start) / iters) * s_to_ms
 
 

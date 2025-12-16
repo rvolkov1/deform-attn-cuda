@@ -6,6 +6,7 @@
 #include <cuda_runtime.h>
 #include "read_utils.h"
 #include "dat.cuh"
+#include "cnpy.h"
 
 #define CUDA_CHECK(call)                                                      \
     do {                                                                      \
@@ -99,6 +100,62 @@ int main(void)
                                  &size_y,
                                  &B_y, &C_y, &H_y, &W_y);
 
+    // CONV 0
+    cnpy::NpyArray conv_offset_0_weight_obj = cnpy::npy_load("testcases/test_1/conv_offset0_weight.npy");
+    size_t conv_offset_0_weight_size = 16 * 1 * 3 * 3;
+    float* conv_offset_0_weight = conv_offset_0_weight_obj.data<float>();
+
+    // CONV 1
+    cnpy::NpyArray conv_offset_1_weight_obj = cnpy::npy_load("testcases/test_1/conv_offset1_weight.npy");
+    size_t conv_offset_1_weight_size = 16;
+    float* conv_offset_1_weight = conv_offset_1_weight_obj.data<float>();
+
+    cnpy::NpyArray conv_offset_1_bias_obj = cnpy::npy_load("testcases/test_1/conv_offset1_bias.npy");
+    size_t conv_offset_1_bias_size = 16;
+    float* conv_offset_1_bias = conv_offset_1_bias_obj.data<float>();
+  
+
+    // CONV 3
+    cnpy::NpyArray conv_offset_3_weight_obj = cnpy::npy_load("testcases/test_1/conv_offset3_weight.npy");
+    size_t conv_offset_3_weight_size = 2 * 16 * 1 * 1;
+    float* conv_offset_3_weight = conv_offset_3_weight_obj.data<float>();
+
+    // PROJ Q
+    cnpy::NpyArray proj_q_weight_obj = cnpy::npy_load("testcases/test_1/proj_q_weight.npy");
+    size_t proj_q_weight_size = 64 * 64 * 1 * 1;
+    float* proj_q_weight = proj_q_weight_obj.data<float>();
+
+    cnpy::NpyArray proj_q_bias_obj = cnpy::npy_load("testcases/test_1/proj_q_bias.npy");
+    size_t proj_q_bias_size = 64;
+    float* proj_q_bias = proj_q_bias_obj.data<float>();
+
+    // PROJ K
+    cnpy::NpyArray proj_k_weight_obj = cnpy::npy_load("testcases/test_1/proj_k_weight.npy");
+    size_t proj_k_weight_size = 64 * 64 * 1 * 1;
+    float* proj_k_weight = proj_k_weight_obj.data<float>();
+
+    cnpy::NpyArray proj_k_bias_obj = cnpy::npy_load("testcases/test_1/proj_k_bias.npy");
+    size_t proj_k_bias_size = 64;
+    float* proj_k_bias = proj_k_bias_obj.data<float>();
+
+    //PROJ V
+    cnpy::NpyArray proj_v_weight_obj = cnpy::npy_load("testcases/test_1/proj_v_weight.npy");
+    size_t proj_v_weight_size = 64 * 64 * 1 * 1;
+    float* proj_v_weight = proj_v_weight_obj.data<float>();
+
+    cnpy::NpyArray proj_v_bias_obj = cnpy::npy_load("testcases/test_1/proj_v_bias.npy");
+    size_t proj_v_bias_size = 64;
+    float* proj_v_bias = proj_v_bias_obj.data<float>();
+
+    // PROJ OUT
+    cnpy::NpyArray proj_out_weight_obj = cnpy::npy_load("testcases/test_1/proj_out_weight.npy");
+    size_t proj_out_weight_size = 64 * 64 * 1 * 1;
+    float* proj_out_weight = proj_out_weight_obj.data<float>();
+
+    cnpy::NpyArray proj_out_bias_obj = cnpy::npy_load("testcases/test_1/proj_out_bias.npy");
+    size_t proj_out_bias_size = 64;
+    float* proj_out_bias = proj_out_bias_obj.data<float>();
+
     printf("Input tensor: %d x %d x %d x %d  |  B x C x W x H\n\n", B_x, C_x, H_x, W_x);
     printf("Output tensor: %d x %d x %d x %d  |  B x C x W x H\n\n", B_y, C_y, H_y, W_y);
 
@@ -107,10 +164,76 @@ int main(void)
         return 1;
     }
 
+
+    // X
     float *d_X;
     CUDA_CHECK(cudaMalloc(&d_X, size_x * sizeof(float)));
-    CUDA_CHECK(cudaMemcpy(d_X, h_X, size_x * sizeof(float),
-                          cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(d_X, h_X, size_x * sizeof(float), cudaMemcpyHostToDevice));
+
+    // CONV 0
+    float *d_conv_offset_0_weight;
+    CUDA_CHECK(cudaMalloc(&d_conv_offset_0_weight, conv_offset_0_weight_size * sizeof(float)));
+    CUDA_CHECK(cudaMemcpy(d_conv_offset_0_weight, conv_offset_0_weight, conv_offset_0_weight_size * sizeof(float), cudaMemcpyHostToDevice));
+
+    // CONV 1
+    float *d_conv_offset_1_weight;
+    CUDA_CHECK(cudaMalloc(&d_conv_offset_1_weight, conv_offset_1_weight_size * sizeof(float)));
+    CUDA_CHECK(cudaMemcpy(d_conv_offset_1_weight, conv_offset_1_weight, conv_offset_1_weight_size * sizeof(float), cudaMemcpyHostToDevice));
+
+    float *d_conv_offset_1_bias;
+    CUDA_CHECK(cudaMalloc(&d_conv_offset_1_bias, conv_offset_1_bias_size * sizeof(float)));
+    CUDA_CHECK(cudaMemcpy(d_conv_offset_1_bias, conv_offset_1_bias, conv_offset_1_bias_size * sizeof(float), cudaMemcpyHostToDevice));
+
+    // CONV 3
+    float *d_conv_offset_3_weight;
+    CUDA_CHECK(cudaMalloc(&d_conv_offset_3_weight, conv_offset_3_weight_size * sizeof(float)));
+    CUDA_CHECK(cudaMemcpy(d_conv_offset_3_weight, conv_offset_3_weight, conv_offset_3_weight_size * sizeof(float), cudaMemcpyHostToDevice));
+
+    // PROJ Q
+    float *d_proj_q_weight;
+    CUDA_CHECK(cudaMalloc(&d_proj_q_weight, proj_q_weight_size * sizeof(float)));
+    CUDA_CHECK(cudaMemcpy(d_proj_q_weight, proj_q_weight, proj_q_weight_size * sizeof(float), cudaMemcpyHostToDevice));
+
+    float *d_proj_q_bias;
+    CUDA_CHECK(cudaMalloc(&d_proj_q_bias, proj_q_bias_size * sizeof(float)));
+    CUDA_CHECK(cudaMemcpy(d_proj_q_bias, proj_q_bias, proj_q_bias_size * sizeof(float), cudaMemcpyHostToDevice));
+
+    // PROJ K
+    float *d_proj_k_weight;
+    CUDA_CHECK(cudaMalloc(&d_proj_k_weight, proj_k_weight_size * sizeof(float)));
+    CUDA_CHECK(cudaMemcpy(d_proj_k_weight, proj_k_weight, proj_k_weight_size * sizeof(float), cudaMemcpyHostToDevice));
+
+    float *d_proj_k_bias;
+    CUDA_CHECK(cudaMalloc(&d_proj_k_bias, proj_k_bias_size * sizeof(float)));
+    CUDA_CHECK(cudaMemcpy(d_proj_k_bias, proj_k_bias, proj_k_bias_size * sizeof(float), cudaMemcpyHostToDevice));
+
+    // PROJ V
+    float *d_proj_v_weight;
+    CUDA_CHECK(cudaMalloc(&d_proj_v_weight, proj_v_weight_size * sizeof(float)));
+    CUDA_CHECK(cudaMemcpy(d_proj_v_weight, proj_v_weight, proj_v_weight_size * sizeof(float), cudaMemcpyHostToDevice));
+
+    float *d_proj_v_bias;
+    CUDA_CHECK(cudaMalloc(&d_proj_v_bias, proj_v_bias_size * sizeof(float)));
+    CUDA_CHECK(cudaMemcpy(d_proj_v_bias, proj_v_bias, proj_v_bias_size * sizeof(float), cudaMemcpyHostToDevice));
+
+    // PROJ OUT
+    float *d_proj_out_weight;
+    CUDA_CHECK(cudaMalloc(&d_proj_out_weight, proj_out_weight * sizeof(float)));
+    CUDA_CHECK(cudaMemcpy(d_proj_out_weight, proj_out_weight, proj_out_weight_size * sizeof(float), cudaMemcpyHostToDevice));
+
+    float *d_proj_v_bias;
+    CUDA_CHECK(cudaMalloc(&d_proj_out_bias, proj_out_bias_size * sizeof(float)));
+    CUDA_CHECK(cudaMemcpy(d_proj_out_bias, proj_out_bias, proj_out_bias_size * sizeof(float), cudaMemcpyHostToDevice));
+
+    cnpy::NpyArray proj_q_weight_obj = cnpy::npy_load("testcases/test_1/proj_q_weight.npy");
+    size_t proj_q_weight_size = 64 * 64 * 1 * 1;
+    float* proj_q_weight = proj_q_weight_obj.data<float>();
+
+    cnpy::NpyArray proj_q_bias_obj = cnpy::npy_load("testcases/test_1/proj_q_bias.npy");
+    size_t proj_q_bias_size = 64;
+    float* proj_q_bias = proj_q_bias_obj.data<float>();
+
+
 
     dim3 block(32, 32);
     dim3 grid((W_x + block.x - 1) / block.x,
