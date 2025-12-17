@@ -100,6 +100,8 @@ int main(void)
                                  &size_y,
                                  &B_y, &C_y, &H_y, &W_y);
 
+    float *h_Y = (float*)calloc(B_y * C_y * H_y * W_y, sizeof(float));
+
     // CONV 0
     cnpy::NpyArray conv_offset_0_weight_obj = cnpy::npy_load("testcases/test_1/conv_offset0_weight.npy");
     size_t conv_offset_0_weight_size = 16 * 1 * 3 * 3;
@@ -170,6 +172,11 @@ int main(void)
     CUDA_CHECK(cudaMalloc(&d_X, size_x * sizeof(float)));
     CUDA_CHECK(cudaMemcpy(d_X, h_X, size_x * sizeof(float), cudaMemcpyHostToDevice));
 
+    // Y
+    float *d_Y;
+    CUDA_CHECK(cudaMalloc(&d_Y, size_y * sizeof(float)));
+    CUDA_CHECK(cudaMemcpy(d_Y, h_Y, size_y * sizeof(float), cudaMemcpyHostToDevice));
+
     // CONV 0
     float *d_conv_offset_0_weight;
     CUDA_CHECK(cudaMalloc(&d_conv_offset_0_weight, conv_offset_0_weight_size * sizeof(float)));
@@ -239,25 +246,61 @@ int main(void)
     int stride = 1;
     int ksize=3;
 
-    baseline_dat_forward<<<1, 1>>>(d_X, B_x, C_x, H_x, W_x,
-                                    q_size_h, q_size_w,
-                                    kv_size_h, kv_size_w,
-                                    n_heads, n_head_channels,
-                                    n_groups,
-                                    stride,
-                                    ksize,
-                                    d_conv_offset_0_weight,
-                                    d_conv_offset_1_weight,
-                                    d_conv_offset_1_bias,
-                                    d_conv_offset_3_weight,
-                                    d_proj_q_weight,
-                                    d_proj_q_bias,
-                                    d_proj_k_weight,
-                                    d_proj_k_bias,
-                                    d_proj_v_weight,
-                                    d_proj_v_bias,
-                                    d_proj_out_weight,
-                                    d_proj_out_bias);
+    // conv 0: proj q
+    cudnnConvolutionForward(
+   // cudnnAddTensor
+
+    // conv offset neural network part
+
+    custom fused kernel for layernorm + gelu
+    cudnn for convolution
+
+    // offsets?
+    c++ / cuda code for this
+
+    // get ref points
+    cuda kernel? potentially fused with prev
+
+    // grid sample
+    
+
+    // proj k
+
+    // proj v
+
+    cudnnFlashAttentionForward
+
+    // einsum
+
+    // mat x scalar mul
+
+    // softmax
+
+    // einsum 2
+    //cublasGemmStridedBatchedEx
+
+    // Done!
+
+    //baseline_dat_forward<<<1, 1>>>(d_X, B_x, C_x, H_x, W_x,
+                                   //d_Y, B_y, C_y, H_y, W_y,
+                                    //q_size_h, q_size_w,
+                                    //kv_size_h, kv_size_w,
+                                    //n_heads, n_head_channels,
+                                    //n_groups,
+                                    //stride,
+                                    //ksize,
+                                    //d_conv_offset_0_weight,
+                                    //d_conv_offset_1_weight,
+                                    //d_conv_offset_1_bias,
+                                    //d_conv_offset_3_weight,
+                                    //d_proj_q_weight,
+                                    //d_proj_q_bias,
+                                    //d_proj_k_weight,
+                                    //d_proj_k_bias,
+                                    //d_proj_v_weight,
+                                    //d_proj_v_bias,
+                                    //d_proj_out_weight,
+                                    //d_proj_out_bias);
 
     //run_kernel_once("d_baseline_dat_forward",
     //                d_baseline_dat_forward,

@@ -115,7 +115,12 @@ class DAttentionBaseline(nn.Module):
         B, C, H, W = x.size()
         dtype, device = x.dtype, x.device
 
+        print(x.flatten()[:10])
+
         q = self.proj_q(x)
+
+        print("norm2:", torch.norm(q, p=2))
+
         q_off = einops.rearrange(q, 'b (g c) h w -> (b g) c h w', g=self.n_groups, c=self.n_group_channels)
         offset = self.conv_offset(q_off).contiguous()  # B * g 2 Hg Wg
         print("offset size:", offset.size())
@@ -145,17 +150,17 @@ class DAttentionBaseline(nn.Module):
         attn = torch.einsum('b c m, b c n -> b m n', q, k) # B * h, HW, Ns
         attn = attn.mul(self.scale)
 
-        rpe_table = self.rpe_table
-        rpe_bias = rpe_table[None, ...].expand(B, -1, -1, -1)
-        q_grid = self._get_q_grid(H, W, B, dtype, device)
-        displacement = (q_grid.reshape(B * self.n_groups, H * W, 2).unsqueeze(2) - pos.reshape(B * self.n_groups, n_sample, 2).unsqueeze(1)).mul(0.5)
-        attn_bias = F.grid_sample(
-            input=einops.rearrange(rpe_bias, 'b (g c) h w -> (b g) c h w', c=self.n_group_heads, g=self.n_groups),
-            grid=displacement[..., (1, 0)],
-            mode='bilinear', align_corners=True) # B * g, h_g, HW, Ns
+        #rpe_table = self.rpe_table
+        #rpe_bias = rpe_table[None, ...].expand(B, -1, -1, -1)
+        #q_grid = self._get_q_grid(H, W, B, dtype, device)
+        #displacement = (q_grid.reshape(B * self.n_groups, H * W, 2).unsqueeze(2) - pos.reshape(B * self.n_groups, n_sample, 2).unsqueeze(1)).mul(0.5)
+        #attn_bias = F.grid_sample(
+        #    input=einops.rearrange(rpe_bias, 'b (g c) h w -> (b g) c h w', c=self.n_group_heads, g=self.n_groups),
+        #    grid=displacement[..., (1, 0)],
+        #    mode='bilinear', align_corners=True) # B * g, h_g, HW, Ns
 
-        attn_bias = attn_bias.reshape(B * self.n_heads, H * W, n_sample)
-        attn = attn + attn_bias
+        #attn_bias = attn_bias.reshape(B * self.n_heads, H * W, n_sample)
+        #attn = attn + attn_bias
 
         attn = F.softmax(attn, dim=2)
 

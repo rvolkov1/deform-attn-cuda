@@ -102,19 +102,14 @@ attn = DAttentionBaseline(
     rpe_table = rpe_table
 ).to(device)
 
-print("Warming up...")
-for _ in range(20):
-    y = attn(x)
-
-
 def time_forward(model, x, iters=100):
     s_to_ms = 1000
 
     start = time.time()
-    for _ in range(iters):
-        y = model(x)
+    #for _ in range(iters):
+    y = model(x)
 
-        y_pred = y[0]
+    y_pred = y[0]
 
 
     print("torch.close", torch.allclose(y_pred, y_true))
