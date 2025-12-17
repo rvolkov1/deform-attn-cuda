@@ -26,66 +26,78 @@ __device__ void d_conv1x1_bias(
         y[k*HW + h*W + w_out] = val;
     }
 }
-static inline float get_value(
+
+__device__ float get_value_device(
     const float* input,
-    int n, int c, int y, int x,
-    int N, int C, int H, int W)
+    int b, int c, int y, int x,
+    int C, int H, int W)
 {
     if (x < 0 || x >= W || y < 0 || y >= H)
         return 0.0f;
 
-    int idx = ((n * C + c) * H + y) * W + x;
+    int idx = ((b * C + c) * H + y) * W + x;
     return input[idx];
 }
 
-void grid_sample(
-    const float* input,   // [N, C, H, W]
-    const float* grid,    // [N, H_out, W_out, 2]
-    float* output,        // [N, C, H_out, W_out]
-    int B, int C,
+/*
+dim3 block(16, 16);
+dim3 grid(
+    (W_out + block.x - 1) / block.x,
+    (H_out + block.y - 1) / block.y,
+    B
+);
+*/
+
+__global__ void grid_sample_kernel(
+    const float* input,
+    const float* grid, 
+    float* output, 
+    int C,
     int H, int W,
     int H_out, int W_out)
 {
-    for (int b = 0; b < B; ++b) {
-        for (int h = 0; h < H_out; ++h) {
-            for (int w = 0; w < W_out; ++w) {
+    int w = blockIdx.x * blockDim.x + threadIdx.x;
+    int h = blockIdx.y * blockDim.y + threadIdx.y;
+    int b = blockIdx.z;
 
-                int gidx = ((b * H_out + h) * W_out + w) * 2;
-                float x_norm = grid[gidx];
-                float y_norm = grid[gidx + 1];
+    if (b >= gridDim.z || h >= H_out || w >= W_out)
+        return;
 
-                float x = (x_norm + 1.f) * 0.5f * (W - 1);
-                float y = (y_norm + 1.f) * 0.5f * (H - 1);
+    int gidx = ((b * H_out + h) * W_out + w) * 2;
+    float x_norm = grid[gidx];
+    float y_norm = grid[gidx + 1];
 
-                int x0 = (int)floorf(x);
-                int y0 = (int)floorf(y);
-                int x1 = x0 + 1;
-                int y1 = y0 + 1;
+    //aligning corners
+    float x = (x_norm + 1.f) * 0.5f * (W - 1);
+    float y = (y_norm + 1.f) * 0.5f * (H - 1);
 
-                float wx = x - x0;
-                float wy = y - y0;
+    int x0 = (int)floorf(x);
+    int y0 = (int)floorf(y);
+    int x1 = x0 + 1;
+    int y1 = y0 + 1;
 
-                for (int c = 0; c < C; ++c) {
-                    float v00 = get_value(input, b, c, y0, x0, B, C, H, W);
-                    float v01 = get_value(input, b, c, y0, x1, B, C, H, W);
-                    float v10 = get_value(input, b, c, y1, x0, B, C, H, W);
-                    float v11 = get_value(input, b, c, y1, x1, B, C, H, W);
+    float wx = x - x0;
+    float wy = y - y0;
 
-                    float val =
-                        (1.f - wx) * (1.f - wy) * v00 +
-                        wx         * (1.f - wy) * v01 +
-                        (1.f - wx) * wy         * v10 +
-                        wx         * wy         * v11;
+    for (int c = 0; c < C; ++c) {
+        float v00 = get_value_device(input, b, c, y0, x0, C, H, W);
+        float v01 = get_value_device(input, b, c, y0, x1, C, H, W);
+        float v10 = get_value_device(input, b, c, y1, x0, C, H, W);
+        float v11 = get_value_device(input, b, c, y1, x1, C, H, W);
 
-                    int out_idx =
-                        ((b * C + c) * H_out + h) * W_out + w;
+        float val =
+            (1.f - wx) * (1.f - wy) * v00 +
+            wx         * (1.f - wy) * v01 +
+            (1.f - wx) * wy         * v10 +
+            wx         * wy         * v11;
 
-                    output[out_idx] = val;
-                }
-            }
-        }
+        int out_idx =
+            ((b * C + c) * H_out + h) * W_out + w;
+
+        output[out_idx] = val;
     }
 }
+
 
 // 1x1 convolution + bias for batch=1, NCHW, device-callable
 // x: [C, H, W], w: [K, C], bias: [K], y: [K, H, W]
