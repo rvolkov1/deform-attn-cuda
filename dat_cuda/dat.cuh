@@ -26,6 +26,91 @@ __device__ void d_conv1x1_bias(
         y[k*HW + h*W + w_out] = val;
     }
 }
+static inline float get_value(
+    const float* input,
+    int n, int c, int y, int x,
+    int N, int C, int H, int W)
+{
+    if (x < 0 || x >= W || y < 0 || y >= H)
+        return 0.0f;
+
+    int idx = ((n * C + c) * H + y) * W + x;
+    return input[idx];
+}
+
+void grid_sample(
+    const float* input,   // [N, C, H, W]
+    const float* grid,    // [N, H_out, W_out, 2]
+    float* output,        // [N, C, H_out, W_out]
+    int B, int C,
+    int H, int W,
+    int H_out, int W_out)
+{
+    for (int b = 0; b < B; ++b) {
+        for (int h = 0; h < H_out; ++h) {
+            for (int w = 0; w < W_out; ++w) {
+
+                int gidx = ((b * H_out + h) * W_out + w) * 2;
+                float x_norm = grid[gidx];
+                float y_norm = grid[gidx + 1];
+
+                float x = (x_norm + 1.f) * 0.5f * (W - 1);
+                float y = (y_norm + 1.f) * 0.5f * (H - 1);
+
+                int x0 = (int)floorf(x);
+                int y0 = (int)floorf(y);
+                int x1 = x0 + 1;
+                int y1 = y0 + 1;
+
+                float wx = x - x0;
+                float wy = y - y0;
+
+                for (int c = 0; c < C; ++c) {
+                    float v00 = get_value(input, b, c, y0, x0, B, C, H, W);
+                    float v01 = get_value(input, b, c, y0, x1, B, C, H, W);
+                    float v10 = get_value(input, b, c, y1, x0, B, C, H, W);
+                    float v11 = get_value(input, b, c, y1, x1, B, C, H, W);
+
+                    float val =
+                        (1.f - wx) * (1.f - wy) * v00 +
+                        wx         * (1.f - wy) * v01 +
+                        (1.f - wx) * wy         * v10 +
+                        wx         * wy         * v11;
+
+                    int out_idx =
+                        ((b * C + c) * H_out + h) * W_out + w;
+
+                    output[out_idx] = val;
+                }
+            }
+        }
+    }
+}
+
+// 1x1 convolution + bias for batch=1, NCHW, device-callable
+// x: [C, H, W], w: [K, C], bias: [K], y: [K, H, W]
+__device__ void d_conv1x1_bias(
+    const float* __restrict__ x,
+    const float* __restrict__ w,
+    const float* __restrict__ bias,
+    float* __restrict__ y,
+    int C, int H, int W,
+    int K
+) {
+    int h = blockIdx.y * blockDim.y + threadIdx.y;
+    int w_out = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (h >= H || w_out >= W) return;
+
+    int HW = H * W;
+    for (int k = 0; k < K; ++k) {
+        float val = bias[k];
+        for (int c = 0; c < C; ++c) {
+            val += x[c*HW + h*W + w_out] * w[k*C + c];
+        }
+        y[k*HW + h*W + w_out] = val;
+    }
+}
 
 //(sizeof(float) * B * H * W) is the size of the ref pointer
 void get_ref_points(float *ref, int Hk, int Wk, int B) {
@@ -35,23 +120,8 @@ void get_ref_points(float *ref, int Hk, int Wk, int B) {
             int rowbase = gridbase + 2 * row * Wk;
             for(int col = 0; col < Wk; col++) {
                 int cellbase = rowbase + 2 * col;
-                q_grid[cellbase] = (row * 2.0 + 1)/ (Hk - 1) - 1.0;
-                q_grid[cellbase + 1] = (col * 2.0 + 1) / (Wk - 1) - 1.0;
-            }
-        }
-    }
-}
-
-//(sizeof(float) * B * H * W * g) is the size of the q_grid pointer
-void get_q_grid(float *q_grid, int H, int W, int B, int g) {
-    for(int grid = 0; grid < B * g; grid++) {
-        int gridbase = grid * 2 * H * W;
-        for(int row = 0; row < H; row++) {
-            int rowbase = gridbase + 2 * row * W;
-            for(int col = 0; col < W; col++) {
-                int cellbase = rowbase + 2 * col;
-                q_grid[cellbase] = row * 2.0 / (H - 1) - 1.0;
-                q_grid[cellbase + 1] = col * 2.0 / (W - 1) - 1.0;
+                ref[cellbase] = (row * 2.f + 1)/ (Hk - 1) - 1.f;
+                ref[cellbase + 1] = (col * 2.f + 1) / (Wk - 1) - 1.f;
             }
         }
     }
