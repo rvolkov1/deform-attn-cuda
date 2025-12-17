@@ -112,19 +112,24 @@ __device__ void d_conv1x1_bias(
     }
 }
 
-//(sizeof(float) * B * H * W) is the size of the ref pointer
-void get_ref_points(float *ref, int Hk, int Wk, int B) {
-    for(int grid = 0; grid < B; grid++) {
-        int gridbase = grid * 2 * Hk * Wk;
-        for(int row = 0; row < Hk; row++) {
-            int rowbase = gridbase + 2 * row * Wk;
-            for(int col = 0; col < Wk; col++) {
-                int cellbase = rowbase + 2 * col;
-                ref[cellbase] = (row * 2.f + 1)/ (Hk - 1) - 1.f;
-                ref[cellbase + 1] = (col * 2.f + 1) / (Wk - 1) - 1.f;
-            }
-        }
-    }
+//(sizeof(float) * B * H * W * 2) is the size of the ref pointer
+__global__ void get_ref_points_kernel(float *ref, int Hk, int Wk) {
+    int b = blockIdx.x;
+    int col = threadIdx.x;
+    int row = threadIdx.y;
+
+    if (row >= Hk || col >= Wk)
+        return;
+
+    int gridbase = b * 2 * Hk * Wk;
+    int rowbase  = gridbase + 2 * row * Wk;
+    int cellbase = rowbase + 2 * col;
+
+    ref[cellbase] =
+        (row * 2.f + 1.f) / (Hk - 1) - 1.f;
+
+    ref[cellbase + 1] =
+        (col * 2.f + 1.f) / (Wk - 1) - 1.f;
 }
 
 __global__
