@@ -98,6 +98,84 @@ __global__ void grid_sample_kernel(
     }
 }
 
+__device__ float get_value_shared(
+    const float* shared,   //C * H * W
+    int c, int y, int x,
+    int H, int W)
+{
+    if (x < 0 || x >= W || y < 0 || y >= H)
+        return 0.0f;
+
+    return shared[c * H * W + y * W + x];
+}
+
+__global__ void grid_sample_kernel_shared(
+    const float* input,   // [B, C, H, W], H,W ≤ 32
+    const float* grid,    // [B, H_out, W_out, 2]
+    float* output,        // [B, C, H_out, W_out]
+    int C,
+    int H, int W,
+    int H_out, int W_out)
+{
+    // Shared memory layout: [C][H][W]
+    __shared__ float shared[];
+
+    int b = blockIdx.z;
+
+    int tid = threadIdx.y * blockDim.x + threadIdx.x;
+    int threads = blockDim.x * blockDim.y;
+    int elems_per_channel = H * W;
+    int total_elems = C * elems_per_channel;
+
+    for (int idx = tid; idx < total_elems; idx += threads) {
+        int c = idx / elems_per_channel;
+        int hw = idx % elems_per_channel;
+        int y = hw / W;
+        int x = hw % W;
+
+        shared[idx] = input[((b * C + c) * H + y) * W + x];
+    }
+
+    __syncthreads();
+
+    int w = blockIdx.x * blockDim.x + threadIdx.x;
+    int h = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if (h >= H_out || w >= W_out)
+        return;
+
+    int gidx = ((b * H_out + h) * W_out + w) * 2;
+    float x_norm = grid[gidx];
+    float y_norm = grid[gidx + 1];
+
+    // align_corners = true
+    float x = (x_norm + 1.f) * 0.5f * (W - 1);
+    float y = (y_norm + 1.f) * 0.5f * (H - 1);
+
+    int x0 = (int)floorf(x);
+    int y0 = (int)floorf(y);
+    int x1 = x0 + 1;
+    int y1 = y0 + 1;
+
+    float wx = x - x0;
+    float wy = y - y0;
+
+    for (int c = 0; c < C; ++c) {
+        float v00 = get_value_shared(shared, c, y0, x0, H, W);
+        float v01 = get_value_shared(shared, c, y0, x1, H, W);
+        float v10 = get_value_shared(shared, c, y1, x0, H, W);
+        float v11 = get_value_shared(shared, c, y1, x1, H, W);
+
+        float val =
+            (1.f - wx) * (1.f - wy) * v00 +
+            wx         * (1.f - wy) * v01 +
+            (1.f - wx) * wy         * v10 +
+            wx         * wy         * v11;
+
+        output[((b * C + c) * H_out + h) * W_out + w] = val;
+    }
+}
+
 
 // 1x1 convolution + bias for batch=1, NCHW, device-callable
 // x: [C, H, W], w: [K, C], bias: [K], y: [K, H, W]
