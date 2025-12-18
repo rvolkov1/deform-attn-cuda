@@ -14,6 +14,97 @@
     }                                                                \
 } while (0)
 
+__global__ void layernorm_gelu_fused(
+    const float* __restrict__ x,     // [B,Cg,H,W]
+    const float* __restrict__ gamma, // [Cg] or nullptr
+    float* __restrict__ y,           // [B,Cg,H,W]
+    int B, int Cg, int H, int W,
+    float eps)
+{
+    int idx = blockIdx.x;
+    int HW  = H * W;
+    if (idx >= B * HW) return;
+
+    int b = idx / HW;
+    int s = idx - b * HW;
+
+    const float* xb = x + (b * Cg * HW) + s;
+    float* yb = y + (b * Cg * HW) + s;
+
+    // Initialize shared memory (Must be done by all threads or thread 0 alone)
+    __shared__ float sh_sum;
+    __shared__ float sh_sq;
+    if (threadIdx.x == 0) {
+        sh_sum = 0.0f;
+        sh_sq = 0.0f;
+    }
+    __syncthreads();
+
+    //mean
+    float sum = 0.0f;
+    for (int c = threadIdx.x; c < Cg; c += blockDim.x) {
+        sum += xb[c * HW];
+    }
+
+    // Register-level Warp reduction
+    for (int offset = 16; offset > 0; offset /= 2) {
+        sum += __shfl_down_sync(0xffffffff, sum, offset);
+    }
+
+    // Only one thread per warp contributes to the block sum
+    if (threadIdx.x % 32 == 0) {
+        atomicAdd(&sh_sum, sum);
+    }
+    __syncthreads();//Wait for all warps to finish atomicAdd
+    float mean = sh_sum / (float)Cg;
+
+    //variance
+    float sq = 0.0f;
+    for (int c = threadIdx.x; c < Cg; c += blockDim.x) {
+        float v = xb[c * HW] - mean;
+        sq += v * v;
+    }
+
+    for (int offset = 16; offset > 0; offset /= 2) {
+        sq += __shfl_down_sync(0xffffffff, sq, offset);
+    }
+
+    if (threadIdx.x % 32 == 0) {
+        atomicAdd(&sh_sq, sq);
+    }
+    __syncthreads(); // Wait for all warps to finish atomicAdd
+    float var = sh_sq / (float)Cg;
+
+    float inv_std = rsqrtf(var + eps);
+
+    // output and gelu calculation
+    const float kAlpha = 0.79788456f;
+    const float kBeta  = 0.044715f;
+
+    for (int c = threadIdx.x; c < Cg; c += blockDim.x) {
+        float v = (xb[c * HW] - mean) * inv_std;
+        float g = (gamma ? gamma[c] : 1.0f);
+        float z = v * g; 
+
+        float z3 = z * z * z;
+        float t  = kAlpha * (z + kBeta * z3);
+        yb[c * HW] = 0.5f * z * (1.0f + tanhf(t));
+    }
+}
+
+void launch_layernorm_gelu_fused(const float* d_x, const float* d_gamma, float* d_y,
+                                 int B, int Cg, int H, int W, cudaStream_t stream)
+{
+    int blocks = B * H * W;
+    int threads = 32;     // same as before
+    float eps = 1e-5f;
+
+    layernorm_gelu_fused<<<blocks, threads, 0, stream>>>(
+        d_x, d_gamma, d_y, B, Cg, H, W, eps
+    );
+}
+
+
 __global__ void layernorm_nchw_over_c_nobias_f32(
     const float* __restrict__ x,    // [B,Cg,H,W]
     const float* __restrict__ gamma,// [Cg] or nullptr
@@ -158,28 +249,93 @@ int main() {
     CUDA_CHECK(cudaMemcpyAsync(d_x, x_h, N * sizeof(float), cudaMemcpyHostToDevice, stream));
     CUDA_CHECK(cudaMemcpyAsync(d_g, g_h, (size_t)Cg * sizeof(float), cudaMemcpyHostToDevice, stream));
 
-    // 1) LayerNorm: d_x -> d_y
-    launch_layernorm(d_x, d_g, d_y, B, Cg, H, W, stream);
-    CUDA_CHECK(cudaGetLastError());
-
-    // Copy back and compare LN output (optional but recommended)
-    std::vector<float> y_after_ln(N);
-    CUDA_CHECK(cudaMemcpyAsync(y_after_ln.data(), d_y, N * sizeof(float), cudaMemcpyDeviceToHost, stream));
-    CUDA_CHECK(cudaStreamSynchronize(stream));
-    compare_arrays("LayerNorm", y_after_ln.data(), y_ln_h, N);
-
-    // 2) GELU(tanh) in-place: d_y -> d_y
+    // N = (size_t)B * Cg * H * W;
     int n = (int)N;
-    launch_gelu_tanh_f32(d_y, d_y, n, stream);
+
+    // Device outputs
+    float* d_y_unfused = nullptr;
+    float* d_y_fused   = nullptr;
+    CUDA_CHECK(cudaMalloc(&d_y_unfused, N * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_y_fused,   N * sizeof(float)));
+
+    // 1) Unfused GPU reference
+    launch_layernorm(d_x, d_g, d_y_unfused, B, Cg, H, W, stream);
     CUDA_CHECK(cudaGetLastError());
 
-    // Copy back and compare final output
-    std::vector<float> y_out(N);
-    CUDA_CHECK(cudaMemcpyAsync(y_out.data(), d_y, N * sizeof(float), cudaMemcpyDeviceToHost, stream));
+    launch_gelu_tanh_f32(d_y_unfused, d_y_unfused, n, stream);
+    CUDA_CHECK(cudaGetLastError());
+
+    // 2) Fused
+    launch_layernorm_gelu_fused(d_x, d_g, d_y_fused, B, Cg, H, W, stream);
+    CUDA_CHECK(cudaGetLastError());
+
+    // Copy back once, compare twice
+    std::vector<float> y_unfused_h(N), y_fused_h(N);
+    CUDA_CHECK(cudaMemcpyAsync(y_unfused_h.data(), d_y_unfused, N * sizeof(float), cudaMemcpyDeviceToHost, stream));
+    CUDA_CHECK(cudaMemcpyAsync(y_fused_h.data(),   d_y_fused,   N * sizeof(float), cudaMemcpyDeviceToHost, stream));
     CUDA_CHECK(cudaStreamSynchronize(stream));
-    compare_arrays("GELU(LayerNorm)", y_out.data(), y_ref_h, N);
+
+    // A) Fused vs Python baseline (final output)
+    compare_arrays("FUSED vs PY (GELU(LN))", y_fused_h.data(), y_ref_h, N);
+
+    // B) Fused vs unfused GPU (final output)
+    compare_arrays("FUSED vs UNFUSED (GPU)", y_fused_h.data(), y_unfused_h.data(), N);
+
+/*
+Benchmarking
+*/
+    const int iterations = 1000;
+
+    // Create CUDA events for timing
+    cudaEvent_t start, stop;
+    CUDA_CHECK(cudaEventCreate(&start));
+    CUDA_CHECK(cudaEventCreate(&stop));
+
+    // warmup
+    for (int i = 0; i < 10; ++i) {
+        launch_layernorm(d_x, d_g, d_y_unfused, B, Cg, H, W, stream);
+        launch_gelu_tanh_f32(d_y_unfused, d_y_unfused, n, stream);
+        launch_layernorm_gelu_fused(d_x, d_g, d_y_fused, B, Cg, H, W, stream);
+    }
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+
+    //  Measure Unfused Kernel (LN + GELU)
+    float unfused_time = 0;
+    CUDA_CHECK(cudaEventRecord(start, stream));
+    for (int i = 0; i < iterations; ++i) {
+        launch_layernorm(d_x, d_g, d_y_unfused, B, Cg, H, W, stream);
+        launch_gelu_tanh_f32(d_y_unfused, d_y_unfused, n, stream);
+    }
+    CUDA_CHECK(cudaEventRecord(stop, stream));
+    CUDA_CHECK(cudaEventSynchronize(stop));
+    CUDA_CHECK(cudaEventElapsedTime(&unfused_time, start, stop));
+
+    //Measure Fused Kernel 
+    float fused_time = 0;
+    CUDA_CHECK(cudaEventRecord(start, stream));
+    for (int i = 0; i < iterations; ++i) {
+        launch_layernorm_gelu_fused(d_x, d_g, d_y_fused, B, Cg, H, W, stream);
+    }
+    CUDA_CHECK(cudaEventRecord(stop, stream));
+    CUDA_CHECK(cudaEventSynchronize(stop));
+    CUDA_CHECK(cudaEventElapsedTime(&fused_time, start, stop));
+
+    // Output Results
+    float avg_unfused = unfused_time / iterations;
+    float avg_fused   = fused_time / iterations;
+
+    printf("\n--- Performance Results (%d iterations) ---\n", iterations);
+    printf("Unfused (LN + GELU): %8.4f ms\n", avg_unfused);
+    printf("Fused (LN_GELU):     %8.4f ms\n", avg_fused);
+    printf("Speedup:             %8.2fx\n", avg_unfused / avg_fused);
+
+    // Cleanup events
+    cudaEventDestroy(start);
+    cudaEventDestroy(stop);
 
     // Cleanup
+    CUDA_CHECK(cudaFree(d_y_unfused));
+    CUDA_CHECK(cudaFree(d_y_fused));
     CUDA_CHECK(cudaFree(d_x));
     CUDA_CHECK(cudaFree(d_y));
     CUDA_CHECK(cudaFree(d_g));
