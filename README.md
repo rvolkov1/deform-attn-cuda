@@ -1,38 +1,3 @@
-## How to build and run code
-
-**You need to set up the environment before running the code, see the instructions below**  
-After you are done setting up the environment, running the code is easy.  
-To run the cuda version, just call the shell script below. Ensure you are in the /deform-attn-cuda/ folder first.
-```bash
-./run_cu.sh
-```
-To call the python version, stay in the /deform-attn-cuda/ folder and call the profiler script:  
-```python
-python dat_torch/prof_dat.py
-```
-
-
-## How to run correctness tests
-
-```{bash}
-bash ./autograder.sh
-```
-
-## How to run performance/speedup tests
-
-## How to run Layernorm/GELU unit tests (both speedup and correctness)
-The unit tests for Layernorm and GELU functions are in a seperate folder. To run them, go to `layernorm-GELU-tests` directory and run the following bash command, replacing test1 with whatever test case, from 1-10, you want to use. 
-```bash
-bash ln_run_cu.sh test1
-```
-
-To run all test cases at once, use:
-```bash
-bash ln_run_cu_all.sh
-```
-
-Each of these testcases will repeatedly run some variations of the layernorm and GELU functions (unfused with no shuffling, unfused with shuffle, fused and optimized) on a single testcase to measure performance, and will also compare the outputs with a ground truth value computed from the PyTorch implementation of layernorm and GELU to test for correctness.
-
 ## Environment setup
 All of this code was built and tested while SSH'd into a CSE Labs machine, so make sure you are SSH'd into a cuda machine. We used `csel-cuda-03.cselabs.umn.edu`.
 
@@ -81,6 +46,49 @@ Cnpy is a utility that allows reading numpy files with C++, available at the git
 ```git
 git clone https://github.com/rogersce/cnpy.git
 ```
+
+## How to build and run code
+
+**You need to set up the environment before running the code, see the instructions above**  
+After you are done setting up the environment, running the code is easy.  
+To run the cuda version, just call the shell script below. Ensure you are in the /deform-attn-cuda/ folder first.
+```bash
+./run_cu.sh
+```
+To call the python version, stay in the /deform-attn-cuda/ folder and call the profiler script:  
+```python
+python dat_torch/prof_dat.py
+```
+
+
+## How to run correctness tests
+
+```{bash}
+bash ./autograder.sh
+```
+
+## Grid Sample Speedup tests
+
+The speedup tests for the grid sample methods are in the gridsample_tests folder. To run them, run the following bash command:
+```bash
+bash ./run_gridsample_tests.sh
+```
+This will run all 5 speedup tests across all 3 implementations.
+
+## How to run Layernorm/GELU unit tests (both speedup and correctness)
+The unit tests for Layernorm and GELU functions are in a seperate folder. To run them, go to `layernorm-GELU-tests` directory and run the following bash command, replacing test1 with whatever test case, from 1-10, you want to use. 
+```bash
+bash ln_run_cu.sh test1
+```
+
+To run all test cases at once, use:
+```bash
+bash ln_run_cu_all.sh
+```
+
+Each of these testcases will repeatedly run some variations of the layernorm and GELU functions (unfused with no shuffling, unfused with shuffle, fused and optimized) on a single testcase to measure performance, and will also compare the outputs with a ground truth value computed from the PyTorch implementation of layernorm and GELU to test for correctness.
+
+
 
 
 ### Reference material
