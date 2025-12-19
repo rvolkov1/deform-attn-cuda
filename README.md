@@ -14,10 +14,6 @@ python dat_torch/prof_dat.py
 
 ## How to run correctness tests
 
-```bash
-./autograder.sh
-```
-
 ## How to run performance/speedup tests
 
 ## How to run Layernorm/GELU unit tests (both speedup and correctness)
@@ -25,6 +21,12 @@ The unit tests for Layernorm and GELU functions are in a seperate folder. To run
 ```bash
 bash ln_run_cu.sh test1
 ```
+
+To run all test cases at once, use:
+```bash
+bash ln_run_cu_all.sh
+```
+
 Each of these testcases will repeatedly run some variations of the layernorm and GELU functions (unfused with no shuffling, unfused with shuffle, fused and optimized) on a single testcase to measure performance, and will also compare the outputs with a ground truth value computed from the PyTorch implementation of layernorm and GELU to test for correctness.
 
 ## Environment setup
