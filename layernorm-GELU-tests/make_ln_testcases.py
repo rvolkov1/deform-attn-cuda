@@ -3,7 +3,7 @@ import torch
 import einops
 
 def main():
-    torch.manual_seed(1207)
+    torch.manual_seed(1111)
 
     # Match CUDA assumptions
     B, Cg, H, W = 1, 16, 32, 32
@@ -28,7 +28,7 @@ def main():
     gelu = torch.nn.GELU()
     y_final = gelu(y_ln)
 
-    testpath = "tests/" + "test5"
+    testpath = "tests/" + "test10"
 
     # Save
     np.save(testpath + "/testx.npy", x.detach().cpu().numpy())
