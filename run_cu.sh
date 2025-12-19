@@ -13,7 +13,9 @@ nvcc -O3 -arch=sm_75 dat_cuda/main.cu cnpy.o \
   -I$CUDNN_HOME/include \
   -L$CUDNN_HOME/lib \
   -L$CUDA_HOME/lib64 \
+  -I./cudnn-frontend/include \
   -lcudnn -lz \
+  -lcublas \
   -Xlinker -rpath -Xlinker $CUDNN_HOME/lib \
   -o dat_cuda/exe
 

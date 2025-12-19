@@ -1,6 +1,124 @@
 #include <cufft.h>
-#include <cublas.h>
+#include <cublas_v2.h>
 #include <cudnn.h>
+#include <vector>
+#include <cmath>
+#include <cstdio>
+#include <cuda_runtime.h>
+#include <cstdlib>
+#include "cnpy.h"
+
+#define CUDA_CHECK(call) do {                                        \
+    cudaError_t err__ = (call);                                      \
+    if (err__ != cudaSuccess) {                                      \
+        fprintf(stderr, "CUDA error %s:%d: %s\n",                    \
+                __FILE__, __LINE__, cudaGetErrorString(err__));      \
+        std::exit(EXIT_FAILURE);                                     \
+    }                                                                \
+} while (0)
+
+__global__ void layernorm_nchw_over_c_nobias_f32(
+    const float* __restrict__ x,    // [B,Cg,H,W]
+    const float* __restrict__ gamma,// [Cg] or nullptr
+    float* __restrict__ y,          // [B,Cg,H,W]
+    int B, int Cg, int H, int W,
+    float eps)
+{
+    int idx = blockIdx.x;  // idx in [0, B*H*W)
+    int HW  = H * W;
+    if (idx >= B * HW) return;
+
+    int b = idx / HW;
+    int s = idx - b * HW;  // s = h*W + w
+
+    const float* xb = x + (b * Cg * HW) + s;
+    float*       yb = y + (b * Cg * HW) + s;
+
+    float sum = 0.0f;
+    for (int c = threadIdx.x; c < Cg; c += blockDim.x) {
+        sum += xb[c * HW];
+    }
+
+    __shared__ float sh_sum;
+    if (threadIdx.x == 0) sh_sum = 0.0f;
+    __syncthreads();
+    atomicAdd(&sh_sum, sum);
+    __syncthreads();
+    float mean = sh_sum / (float)Cg;
+
+    float sq = 0.0f;
+    for (int c = threadIdx.x; c < Cg; c += blockDim.x) {
+        float v = xb[c * HW] - mean;
+        sq += v * v;
+    }
+
+    __shared__ float sh_sq;
+    if (threadIdx.x == 0) sh_sq = 0.0f;
+    __syncthreads();
+    atomicAdd(&sh_sq, sq);
+    __syncthreads();
+    float var = sh_sq / (float)Cg;
+
+    float inv_std = rsqrtf(var + eps);
+
+    for (int c = threadIdx.x; c < Cg; c += blockDim.x) {
+        float v = (xb[c * HW] - mean) * inv_std;
+        float g = (gamma ? gamma[c] : 1.0f);
+        yb[c * HW] = v * g; // no beta
+    }
+}
+
+__global__ void gelu_tanh_f32_kernel(const float* __restrict__ x,
+                                    float* __restrict__ y,
+                                    int n)
+{
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n) return;
+
+    float v = x[i];
+    const float kAlpha = 0.7978845608028654f; // sqrt(2/pi)
+    const float kBeta  = 0.044715f;
+
+    float v3 = v * v * v;
+    float t  = kAlpha * (v + kBeta * v3);
+    y[i] = 0.5f * v * (1.0f + tanhf(t));
+}
+
+void launch_layernorm(const float* d_x, const float* d_gamma, float* d_y,
+                      int B, int Cg, int H, int W)
+{
+    int blocks = B * H * W;
+    int threads = 32;     // fine for Cg=16
+    float eps = 1e-5f;
+
+    layernorm_nchw_over_c_nobias_f32<<<blocks, threads>>>(
+        d_x, d_gamma, d_y, B, Cg, H, W, eps
+    );
+    CUDA_CHECK(cudaGetLastError());
+}
+
+void launch_gelu_tanh_f32(const float* d_x, float* d_y, int n, cudaStream_t stream)
+{
+    int block = 256;
+    int grid  = (n + block - 1) / block;
+    gelu_tanh_f32_kernel<<<grid, block, 0, stream>>>(d_x, d_y, n);
+}
+
+__global__ void norm2(float* buf, int len) {
+  float sum = 0;
+  for (int i = 0; i < len; ++i) {
+    sum += buf[i] * buf[i];
+  }
+
+  printf("norm2: %f\n", sqrt(sum));
+}
+
+__global__ void print_first_n_elements(float* buf, int n) {
+  for (int i = 0; i < n; ++i) {
+    printf("buf[%d]: %f\n", i, buf[i]);
+  }
+
+}
 
 __device__ void d_norm2(float* buf, int len) {
   float sum = 0;
@@ -183,4 +301,88 @@ void baseline_dat_forward(
     printf("hi\n");
 
     d_norm2(y, By * Cy * Hy * Wy);
+}
+
+// grid sample utils
+
+//(sizeof(float) * B * H * W * 2) is the size of the ref pointer
+__global__ void get_ref_points_kernel(float *ref, int Hk, int Wk) {
+    int b = blockIdx.x;
+    int col = threadIdx.x;
+    int row = threadIdx.y;
+
+    if (row >= Hk || col >= Wk)
+        return;
+
+    int gridbase = b * 2 * Hk * Wk;
+    int rowbase  = gridbase + 2 * row * Wk;
+    int cellbase = rowbase + 2 * col;
+
+    ref[cellbase] +=
+        (row * 2.f + 1.f) / (Hk - 1) - 1.f;
+
+    ref[cellbase + 1] +=
+        (col * 2.f + 1.f) / (Wk - 1) - 1.f;
+}
+
+__device__ float get_value_device(
+    const float* input,
+    int b, int c, int y, int x,
+    int C, int H, int W)
+{
+    if (x < 0 || x >= W || y < 0 || y >= H)
+        return 0.0f;
+
+    int idx = ((b * C + c) * H + y) * W + x;
+    return input[idx];
+}
+
+__global__ void grid_sample_kernel(
+    const float* input,
+    const float* grid, 
+    float* output, 
+    int C,
+    int H, int W,
+    int H_out, int W_out)
+{
+    int w = blockIdx.x * blockDim.x + threadIdx.x;
+    int h = blockIdx.y * blockDim.y + threadIdx.y;
+    int b = blockIdx.z;
+
+    if (b >= gridDim.z || h >= H_out || w >= W_out)
+        return;
+
+    int gidx = ((b * H_out + h) * W_out + w) * 2;
+    float x_norm = grid[gidx];
+    float y_norm = grid[gidx + 1];
+
+    //aligning corners
+    float x = (x_norm + 1.f) * 0.5f * (W - 1);
+    float y = (y_norm + 1.f) * 0.5f * (H - 1);
+
+    int x0 = (int)floorf(x);
+    int y0 = (int)floorf(y);
+    int x1 = x0 + 1;
+    int y1 = y0 + 1;
+
+    float wx = x - x0;
+    float wy = y - y0;
+
+    for (int c = 0; c < C; ++c) {
+        float v00 = get_value_device(input, b, c, y0, x0, C, H, W);
+        float v01 = get_value_device(input, b, c, y0, x1, C, H, W);
+        float v10 = get_value_device(input, b, c, y1, x0, C, H, W);
+        float v11 = get_value_device(input, b, c, y1, x1, C, H, W);
+
+        float val =
+            (1.f - wx) * (1.f - wy) * v00 +
+            wx         * (1.f - wy) * v01 +
+            (1.f - wx) * wy         * v10 +
+            wx         * wy         * v11;
+
+        int out_idx =
+            ((b * C + c) * H_out + h) * W_out + w;
+
+        output[out_idx] = val;
+    }
 }

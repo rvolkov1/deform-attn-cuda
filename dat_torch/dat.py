@@ -43,6 +43,10 @@ class DAttentionBaseline(nn.Module):
         kk = self.ksize
         pad_size = kk // 2 if kk != stride else 0
 
+        #self.conv_offset = nn.Sequential(
+        #    nn.Conv2d(self.n_group_channels, self.n_group_channels, kk, stride, pad_size, groups=self.n_group_channels),
+        #)
+
         self.conv_offset = nn.Sequential(
             nn.Conv2d(self.n_group_channels, self.n_group_channels, kk, stride, pad_size, groups=self.n_group_channels),
             LayerNormProxy(self.n_group_channels),
@@ -115,17 +119,28 @@ class DAttentionBaseline(nn.Module):
         B, C, H, W = x.size()
         dtype, device = x.dtype, x.device
 
-        print(x.flatten()[:10])
 
+        print("x flat:", x.flatten()[:10])
         q = self.proj_q(x)
 
         print("norm2:", torch.norm(q, p=2))
+        print("q flat:", q.flatten()[:10])
+        print("weight flat:", self.proj_q.weight.detach().cpu().numpy().flatten(order="C")[:10])
+        print("bias flat:", self.proj_q.bias.flatten()[:10])
 
         q_off = einops.rearrange(q, 'b (g c) h w -> (b g) c h w', g=self.n_groups, c=self.n_group_channels)
-        offset = self.conv_offset(q_off).contiguous()  # B * g 2 Hg Wg
+
+        print("before conv offset:", q_off.shape)
+        offset = self.conv_offset(q_off)  # B * g 2 Hg Wg
+        print("after conv offset:", offset.shape)
+        print("after conv norm2:", torch.norm(offset, p=2))
+
         print("offset size:", offset.size())
+        print("ofset_flat:", offset.flatten()[:10])
         Hk, Wk = offset.size(2), offset.size(3)
         n_sample = Hk * Wk
+
+        print("Hk, Wk, B", Hk, Wk, B)
 
         offset_range = torch.tensor([1.0 / (Hk - 1.0), 1.0 / (Wk - 1.0)], device=device).reshape(1, 2, 1, 1)
         offset = offset.tanh().mul(offset_range).mul(self.offset_range_factor)
@@ -133,19 +148,30 @@ class DAttentionBaseline(nn.Module):
         offset = einops.rearrange(offset, 'b p h w -> b h w p')
         reference = self._get_ref_points(Hk, Wk, B, dtype, device)
 
+        print("offset shape, ref shape", offset.shape, reference.shape)
         pos = offset + reference
 
         x_sampled = F.grid_sample(
             input=x.reshape(B * self.n_groups, self.n_group_channels, H, W), 
             grid=pos[..., (1, 0)], # y, x -> x, y
             mode='bilinear', align_corners=True) # B * g, Cg, Hg, Wg
+
+        print("x_sampled shape", x_sampled.shape)
+        print("x_samples norm2", torch.norm(x_sampled, p=2))
                 
 
         x_sampled = x_sampled.reshape(B, C, 1, n_sample)
 
+
+        print("x_sampled_reshaped size:", x_sampled.shape)
+
         q = q.reshape(B * self.n_heads, self.n_head_channels, H * W)
         k = self.proj_k(x_sampled).reshape(B * self.n_heads, self.n_head_channels, n_sample)
         v = self.proj_v(x_sampled).reshape(B * self.n_heads, self.n_head_channels, n_sample)
+
+        print("q shape:", q.shape)
+        print("k shape:", k.shape)
+        print("v shape:", v.shape)
 
         attn = torch.einsum('b c m, b c n -> b m n', q, k) # B * h, HW, Ns
         attn = attn.mul(self.scale)
