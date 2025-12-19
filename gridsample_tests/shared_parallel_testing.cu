@@ -62,7 +62,7 @@ void run_iteration(int H_out, int W_out) {
 
     size_t shmem_bytes = C * H * W * sizeof(float);
 
-    printf("========Grid Sample Naive Parallel. H_out: %d, W_out: % d ========\n", H_out, W_out);
+    printf("========Grid Sample Shared Parallel. H_out: %d, W_out: % d ========\n", H_out, W_out);
 
     /* Warmup */
     for (int i = 0; i < 5; ++i)
