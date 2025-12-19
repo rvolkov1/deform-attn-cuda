@@ -3,10 +3,10 @@ import torch
 import einops
 
 def main():
-    torch.manual_seed(0)
+    torch.manual_seed(1207)
 
-    # Match your CUDA assumptions
-    B, Cg, H, W = 1, 16, 5, 7
+    # Match CUDA assumptions
+    B, Cg, H, W = 1, 16, 32, 32
     eps = 1e-5
 
     # Input in NCHW
@@ -16,7 +16,7 @@ def main():
     ln = torch.nn.LayerNorm(Cg, eps=eps, elementwise_affine=True)
 
     with torch.no_grad():
-        ln.bias.zero_()                  # beta = 0 (matches your CUDA "no bias")
+        ln.bias.zero_()                  # beta = 0, because we aren't using bias
         ln.weight.copy_(torch.randn(Cg)) # gamma
 
     # Stage 1: LayerNorm reference (NCHW output)
@@ -28,11 +28,13 @@ def main():
     gelu = torch.nn.GELU()
     y_final = gelu(y_ln)
 
+    testpath = "tests/" + "test5"
+
     # Save
-    np.save("testx.npy", x.detach().cpu().numpy())
-    np.save("testgamma.npy", ln.weight.detach().cpu().numpy())
-    np.save("testy_ln_ref.npy", y_ln.detach().cpu().numpy())
-    np.save("testy_ref.npy", y_final.detach().cpu().numpy())
+    np.save(testpath + "/testx.npy", x.detach().cpu().numpy())
+    np.save(testpath + "/testgamma.npy", ln.weight.detach().cpu().numpy())
+    np.save(testpath + "/testy_ln_ref.npy", y_ln.detach().cpu().numpy())
+    np.save(testpath + "/testy_ref.npy", y_final.detach().cpu().numpy())
 
     print("Wrote: testx.npy, testgamma.npy, testy_ln_ref.npy, testy_ref.npy")
     print("Shapes:")
