@@ -14,6 +14,10 @@ python dat_torch/prof_dat.py
 
 ## How to run correctness tests
 
+```{bash}
+bash ./autograder.sh
+```
+
 ## How to run performance/speedup tests
 
 ## How to run Layernorm/GELU unit tests (both speedup and correctness)
