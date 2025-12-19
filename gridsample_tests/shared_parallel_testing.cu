@@ -17,14 +17,11 @@
     } while (0)
 
 
-int main(void)
-{
+void run_iteration(int H_out, int W_out) {
     int B = 4;
     int C = 32;
     int H = 32;
     int W = 32;
-    int H_out = 256;
-    int W_out = 256;
 
     int input_size  = B * C * H * W;
     int grid_size   = B * H_out * W_out * 2;
@@ -65,8 +62,7 @@ int main(void)
 
     size_t shmem_bytes = C * H * W * sizeof(float);
 
-    printf("========\nGrid Sample Test 2\n");
-    printf("Warming up \n");
+    printf("========Grid Sample Naive Parallel. H_out: %d, W_out: % d ========\n", H_out, W_out);
 
     /* Warmup */
     for (int i = 0; i < 5; ++i)
@@ -84,7 +80,6 @@ int main(void)
     CHECK_CUDA(cudaEventCreate(&start));
     CHECK_CUDA(cudaEventCreate(&stop));
 
-    printf("Running \n");
 
     CHECK_CUDA(cudaEventRecord(start));
     for (int i = 0; i < iters; ++i)
@@ -98,8 +93,7 @@ int main(void)
 
     float avg_ms = ms / iters;
 
-    printf("Target shared parallel kernel time: 0.01 ms\n");
-    printf("Average shared parallel kernel time: %.4f ms\n", avg_ms);
+    printf("Average kernel time: %.4f ms\n", avg_ms);
 
 
     free(h_input);
@@ -108,5 +102,14 @@ int main(void)
     cudaFree(d_grid);
     cudaFree(d_output);
 
+}
+int main(void)
+{
+
+    run_iteration(256, 256);
+    run_iteration(128, 128);
+    run_iteration(64, 64);
+    run_iteration(256, 64);
+    run_iteration(64, 256);
     return 0;
 }

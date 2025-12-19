@@ -10,15 +10,11 @@ static double elapsed_ms(struct timespec a, struct timespec b)
            (b.tv_nsec - a.tv_nsec) / 1e6;
 }
 
-int main(void)
-{
-    /* Problem sizes (match CUDA tests) */
+void run_iteration(int H_out, int W_out) {
     int B = 4;
     int C = 32;
     int H = 32;
     int W = 32;
-    int H_out = 256;
-    int W_out = 256;
 
     int input_size  = B * C * H * W;
     int grid_size   = B * H_out * W_out * 2;
@@ -27,11 +23,6 @@ int main(void)
     float* input  = (float*)malloc(input_size  * sizeof(float));
     float* grid   = (float*)malloc(grid_size   * sizeof(float));
     float* output = (float*)malloc(output_size * sizeof(float));
-
-    if (!input || !grid || !output) {
-        fprintf(stderr, "Allocation failed\n");
-        return 1;
-    }
 
     /* Initialize input */
     for (int i = 0; i < input_size; ++i)
@@ -47,7 +38,7 @@ int main(void)
             }
 
 
-    printf("========\nGrid Sample Baseline\n");
+    printf("========Grid Sample Serial. H_out: %d, W_out: % d ========\n", H_out, W_out);
 
 
     /* Warmup */
@@ -58,8 +49,6 @@ int main(void)
     /* Timing */
     int iters = 5;
     struct timespec t0, t1;
-
-    printf("Running \n");
 
     clock_gettime(CLOCK_MONOTONIC, &t0);
     for (int i = 0; i < iters; ++i)
@@ -75,6 +64,15 @@ int main(void)
     free(input);
     free(grid);
     free(output);
+
+}
+
+int main(void){
+    run_iteration(256, 256);
+    run_iteration(128, 128);
+    run_iteration(64, 64);
+    run_iteration(256, 64);
+    run_iteration(64, 256);
 
     return 0;
 }
