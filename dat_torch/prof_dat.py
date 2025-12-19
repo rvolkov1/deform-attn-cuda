@@ -107,12 +107,11 @@ def time_forward(model, x, iters=100):
 
     start = time.time()
     #for _ in range(iters):
-    y = model(x)
+    y = model(x.to(device))
 
     y_pred = y[0]
 
-
-    print("torch.close", torch.allclose(y_pred, y_true))
+    print("torch.close", torch.allclose(y_pred.cpu(), y_true.cpu(), rtol=1))
     return ((time.time() - start) / iters) * s_to_ms
 
 

@@ -118,44 +118,45 @@ def save_testcase(x, y, attn, testcase_no=1):
       f2.write(rpe_table_txt)
   
 
-B = 1
-C = 64
-H = 32
-W = 32
+for test_no in range(11, 21):
+  B = 1
+  C = 64
+  H = 32
+  W = 32
 
-device = "cpu"
+  device = "cpu"
 
-attn = DAttentionBaseline(
-    q_size=(H, W),
-    kv_size=(H, W),
-    n_heads=4,
-    n_head_channels=C // 4,
-    n_groups=4,
-    stride=1,
-    ksize=3,
-    rpe_table=None
-).to(device)
+  attn = DAttentionBaseline(
+      q_size=(H, W),
+      kv_size=(H, W),
+      n_heads=4,
+      n_head_channels=C // 4,
+      n_groups=4,
+      stride=1,
+      ksize=3,
+      rpe_table=None
+  ).to(device)
 
-x = torch.randn(B, C, H, W, device=device)
-
-
-print("Warming up...")
-for _ in range(20):
-    y = attn(x)
+  x = torch.randn(B, C, H, W, device=device)
 
 
-def time_forward(model, x, iters=100):
-    s_to_ms = 1000
-
-    start = time.time()
-    for _ in range(iters):
-        y = model(x)
-    return y, ((time.time() - start) / iters) * s_to_ms
+  print("Warming up...")
+  for _ in range(20):
+      y = attn(x)
 
 
-y, ms = time_forward(attn, x)
+  def time_forward(model, x, iters=100):
+      s_to_ms = 1000
 
-save_testcase(x, y, attn, testcase_no=1)
-save_weights_numpy(attn, f"testcases/test_{1}")
+      start = time.time()
+      for _ in range(iters):
+          y = model(x)
+      return y, ((time.time() - start) / iters) * s_to_ms
 
-print(f"Forward Pass Time: {ms:.3f} ms/iter")
+
+  y, ms = time_forward(attn, x)
+
+  save_testcase(x, y, attn, testcase_no=test_no)
+  save_weights_numpy(attn, f"testcases/test_{test_no}")
+
+  print(f"Forward Pass Time: {ms:.3f} ms/iter")

@@ -12,6 +12,9 @@
 
 typedef void (*kernel_ptr)(const float*, int, int, int, int);
 
+#define BUILD_PATH(buf, base, file) \
+    snprintf(buf, sizeof(buf), "%s/%s", base, file)
+
 float run_kernel_once(const char* label,
                        kernel_ptr kernel,
                        dim3 grid, dim3 block,
@@ -514,85 +517,125 @@ void sdotprodattn_forward(
     cudaFree(S);
 }
 
-int main(void)
+
+char* str_concat_new(const char* s1, const char* s2) {
+    if (s1 == NULL || s2 == NULL) {
+        return NULL;
+    }
+
+    size_t len1 = strlen(s1);
+    size_t len2 = strlen(s2);
+    size_t total_len = len1 + len2 + 1;
+
+    char* new_string = (char*)malloc(total_len * sizeof(char));
+    if (new_string == NULL) {
+        return NULL;
+    }
+
+    strcpy(new_string, s1); 
+    strcat(new_string, s2);
+
+    return new_string;
+}
+
+int main(int argc, char *argv[])
 {
     //printf("cuDNN version: %lu\n", cudnnGetVersion());
+
+    char *testcase = argv[1];
+    char path[1024];
+
     int B_x, C_x, H_x, W_x;
     int B_y, C_y, H_y, W_y;
     size_t size_x, size_y, size_pos, size_ref;
 
-    float *h_X = read_tensor_txt("testcases/test_1/x.txt", 
+    BUILD_PATH(path, testcase, "/x.txt");
+    float *h_X = read_tensor_txt(path, 
                                  &size_x,
                                  &B_x, &C_x, &H_x, &W_x);
 
-    float *h_Y_true = read_tensor_txt("testcases/test_1/y.txt", 
+    BUILD_PATH(path, testcase, "/x.txt");
+    float *h_Y_true = read_tensor_txt(path, 
                                  &size_y,
                                  &B_y, &C_y, &H_y, &W_y);
 
     float *h_Y = (float*)calloc(B_y * C_y * H_y * W_y * 32 * 32, sizeof(float));
 
     // CONV 0
-    cnpy::NpyArray conv_offset_0_weight_obj = cnpy::npy_load("testcases/test_1/conv_offset0_weight.npy");
+    BUILD_PATH(path, testcase, "conv_offset0_weight.npy");
+    cnpy::NpyArray conv_offset_0_weight_obj = cnpy::npy_load(path);
     size_t conv_offset_0_weight_size = 16 * 1 * 3 * 3 * sizeof(float);
     float* conv_offset_0_weight = conv_offset_0_weight_obj.data<float>();
 
-    cnpy::NpyArray conv_offset_0_bias_obj = cnpy::npy_load("testcases/test_1/conv_offset0_bias.npy");
+    BUILD_PATH(path, testcase, "conv_offset0_bias.npy");
+    cnpy::NpyArray conv_offset_0_bias_obj = cnpy::npy_load(path);
     size_t conv_offset_0_bias_size = 16 * sizeof(float);
     float* conv_offset_0_bias = conv_offset_0_bias_obj.data<float>();
 
     // CONV 1
-    cnpy::NpyArray conv_offset_1_weight_obj = cnpy::npy_load("testcases/test_1/conv_offset1_weight.npy");
+    BUILD_PATH(path, testcase, "conv_offset1_weight.npy");
+    cnpy::NpyArray conv_offset_1_weight_obj = cnpy::npy_load(path);
     size_t conv_offset_1_weight_size = 16;
     float* conv_offset_1_weight = conv_offset_1_weight_obj.data<float>();
 
-    cnpy::NpyArray conv_offset_1_bias_obj = cnpy::npy_load("testcases/test_1/conv_offset1_bias.npy");
+    BUILD_PATH(path, testcase, "conv_offset1_bias.npy");
+    cnpy::NpyArray conv_offset_1_bias_obj = cnpy::npy_load(path);
     size_t conv_offset_1_bias_size = 16;
     float* conv_offset_1_bias = conv_offset_1_bias_obj.data<float>();
   
 
     // CONV 3
-    cnpy::NpyArray conv_offset_3_weight_obj = cnpy::npy_load("testcases/test_1/conv_offset3_weight.npy");
+    BUILD_PATH(path, testcase, "conv_offset3_weight.npy");
+    cnpy::NpyArray conv_offset_3_weight_obj = cnpy::npy_load(path);
     size_t conv_offset_3_weight_size = 2 * 16 * 1 * 1 * sizeof(float);
     float* conv_offset_3_weight = conv_offset_3_weight_obj.data<float>();
 
     // PROJ Q
-    cnpy::NpyArray proj_q_weight_obj = cnpy::npy_load("testcases/test_1/proj_q_weight.npy");
+    BUILD_PATH(path, testcase, "proj_q_weight.npy");
+    cnpy::NpyArray proj_q_weight_obj = cnpy::npy_load(path);
     size_t proj_q_weight_size = 64 * 64 * 1 * 1 * sizeof(float);
     float* proj_q_weight = proj_q_weight_obj.data<float>();
 
-    cnpy::NpyArray proj_q_bias_obj = cnpy::npy_load("testcases/test_1/proj_q_bias.npy");
+    BUILD_PATH(path, testcase, "proj_q_bias.npy");
+    cnpy::NpyArray proj_q_bias_obj = cnpy::npy_load(path);
     size_t proj_q_bias_size = 64;
     float* proj_q_bias = proj_q_bias_obj.data<float>();
 
     // PROJ K
-    cnpy::NpyArray proj_k_weight_obj = cnpy::npy_load("testcases/test_1/proj_k_weight.npy");
+    BUILD_PATH(path, testcase, "proj_k_weight.npy");
+    cnpy::NpyArray proj_k_weight_obj = cnpy::npy_load(path);
     size_t proj_k_weight_size = 64 * 64 * 1 * 1;
     float* proj_k_weight = proj_k_weight_obj.data<float>();
 
-    cnpy::NpyArray proj_k_bias_obj = cnpy::npy_load("testcases/test_1/proj_k_bias.npy");
+    BUILD_PATH(path, testcase, "proj_k_bias.npy");
+    cnpy::NpyArray proj_k_bias_obj = cnpy::npy_load(path);
     size_t proj_k_bias_size = 64;
     float* proj_k_bias = proj_k_bias_obj.data<float>();
 
     //PROJ V
-    cnpy::NpyArray proj_v_weight_obj = cnpy::npy_load("testcases/test_1/proj_v_weight.npy");
+    BUILD_PATH(path, testcase, "proj_v_weight.npy");
+    cnpy::NpyArray proj_v_weight_obj = cnpy::npy_load(path);
     size_t proj_v_weight_size = 64 * 64 * 1 * 1;
     float* proj_v_weight = proj_v_weight_obj.data<float>();
 
-    cnpy::NpyArray proj_v_bias_obj = cnpy::npy_load("testcases/test_1/proj_v_bias.npy");
+    BUILD_PATH(path, testcase, "proj_v_bias.npy");
+    cnpy::NpyArray proj_v_bias_obj = cnpy::npy_load(path);
     size_t proj_v_bias_size = 64;
     float* proj_v_bias = proj_v_bias_obj.data<float>();
 
     // PROJ OUT
-    cnpy::NpyArray proj_out_weight_obj = cnpy::npy_load("testcases/test_1/proj_out_weight.npy");
+    BUILD_PATH(path, testcase, "proj_out_weight.npy");
+    cnpy::NpyArray proj_out_weight_obj = cnpy::npy_load(path);
     size_t proj_out_weight_size = 64 * 64 * 1 * 1;
     float* proj_out_weight = proj_out_weight_obj.data<float>();
 
-    cnpy::NpyArray proj_out_bias_obj = cnpy::npy_load("testcases/test_1/proj_out_bias.npy");
+    BUILD_PATH(path, testcase, "proj_out_bias.npy");
+    cnpy::NpyArray proj_out_bias_obj = cnpy::npy_load(path);
     size_t proj_out_bias_size = 64;
     float* proj_out_bias = proj_out_bias_obj.data<float>();
 
-    printf("Input tensor: %d x %d x %d x %d  |  B x C x W x H\n\n", B_x, C_x, H_x, W_x);
-    printf("Output tensor: %d x %d x %d x %d  |  B x C x W x H\n\n", B_y, C_y, H_y, W_y);
+    //printf("Input tensor: %d x %d x %d x %d  |  B x C x W x H\n\n", B_x, C_x, H_x, W_x);
+    //printf("Output tensor: %d x %d x %d x %d  |  B x C x W x H\n\n", B_y, C_y, H_y, W_y);
 
     // X
     float *d_X;
@@ -732,6 +775,15 @@ int main(void)
     float* d_offset = d_Y;
     float* d_out_conv2 = d_X;
 
+    // start timing
+    cudaEvent_t start, stop;
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
+
+    // Record the start event
+    cudaEventRecord(start, 0);
+
+
     //conv2d
 
     conv2d_wbias(d_offset, 4, 16, 32, 32,     // input shape
@@ -854,6 +906,27 @@ int main(void)
         B_x * n_heads, n_head_channels, H_x * W_x, 1, 1,
         1.0f
     );
+
+    cudaEventRecord(stop, 0);
+
+    cudaEventSynchronize(stop);
+
+    float elapsedTime;
+    cudaEventElapsedTime(&elapsedTime, start, stop);
+
+    // TESTCASE
+    std::cout << "Kernel execution time: " << elapsedTime << " ms" << std::endl;
+
+    if (size_y == B_x * n_heads * n_head_channels * H_x * W_x) {
+      printf("Ran without errors (✅)\n");
+      printf("%s passed (✅)\n", testcase);
+    } else {
+      printf("Shape error on output(❌)\n");
+      printf("%s failed (❌)\n", testcase);
+    }
+
+    cudaEventDestroy(start);
+    cudaEventDestroy(stop);
 
     // obliterate cudnn
     cudnnDestroy(handle);

@@ -20,5 +20,6 @@ nvcc -O3 -arch=sm_75 dat_cuda/main.cu cnpy.o \
   -diag-suppress 177 \
   -o dat_cuda/exe
 
-./dat_cuda/exe
-
+for i in {1..20}; do
+    ./dat_cuda/exe testcases/test_$i
+done
