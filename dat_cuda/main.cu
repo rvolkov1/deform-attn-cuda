@@ -517,27 +517,6 @@ void sdotprodattn_forward(
     cudaFree(S);
 }
 
-
-char* str_concat_new(const char* s1, const char* s2) {
-    if (s1 == NULL || s2 == NULL) {
-        return NULL;
-    }
-
-    size_t len1 = strlen(s1);
-    size_t len2 = strlen(s2);
-    size_t total_len = len1 + len2 + 1;
-
-    char* new_string = (char*)malloc(total_len * sizeof(char));
-    if (new_string == NULL) {
-        return NULL;
-    }
-
-    strcpy(new_string, s1); 
-    strcat(new_string, s2);
-
-    return new_string;
-}
-
 int main(int argc, char *argv[])
 {
     //printf("cuDNN version: %lu\n", cudnnGetVersion());
@@ -554,7 +533,7 @@ int main(int argc, char *argv[])
                                  &size_x,
                                  &B_x, &C_x, &H_x, &W_x);
 
-    BUILD_PATH(path, testcase, "/x.txt");
+    BUILD_PATH(path, testcase, "/y.txt");
     float *h_Y_true = read_tensor_txt(path, 
                                  &size_y,
                                  &B_y, &C_y, &H_y, &W_y);
