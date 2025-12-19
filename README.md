@@ -71,19 +71,19 @@ bash ./autograder.sh
 
 The speedup tests for the grid sample methods are in the gridsample_tests folder. To run them, run the following bash command:
 ```bash
-bash ./run_gridsample_tests.sh
+bash gridsample_tests/run_gridsample_tests.sh
 ```
 This will run all 5 speedup tests across all 3 implementations.
 
 ## How to run Layernorm/GELU unit tests (both speedup and correctness)
 The unit tests for Layernorm and GELU functions are in a seperate folder. To run them, go to `layernorm-GELU-tests` directory and run the following bash command, replacing test1 with whatever test case, from 1-10, you want to use. 
 ```bash
-bash ln_run_cu.sh test1
+bash layernorm-GELU-tests/ln_run_cu.sh test1
 ```
 
 To run all test cases at once, use:
 ```bash
-bash ln_run_cu_all.sh
+bash layernorm-GELU-tests/ln_run_cu_all.sh
 ```
 
 Each of these testcases will repeatedly run some variations of the layernorm and GELU functions (unfused with no shuffling, unfused with shuffle, fused and optimized) on a single testcase to measure performance, and will also compare the outputs with a ground truth value computed from the PyTorch implementation of layernorm and GELU to test for correctness.
