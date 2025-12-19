@@ -10,27 +10,6 @@
 #include <cudnn.h>
 #include <cudnn_frontend.h>
 
-#define CUDA_CHECK(call)                                                      \
-    do {                                                                      \
-        cudaError_t err__ = (call);                                           \
-        if (err__ != cudaSuccess) {                                           \
-            fprintf(stderr, "CUDA error %s:%d: %s\n",                         \
-                    __FILE__, __LINE__, cudaGetErrorString(err__));           \
-            exit(EXIT_FAILURE);                                               \
-        }                                                                     \
-    } while (0)
-
-#define CUDNN_CHECK(call)                                                  \
-do {                                                                       \
-    cudnnStatus_t status = call;                                           \
-    if (status != CUDNN_STATUS_SUCCESS) {                                  \
-        fprintf(stderr, "cuDNN Error: %s at %s:%d\n",                      \
-                cudnnGetErrorString(status), __FILE__, __LINE__);          \
-        exit(EXIT_FAILURE);                                                \
-    }                                                                      \
-} while (0)
-
-
 typedef void (*kernel_ptr)(const float*, int, int, int, int);
 
 float run_kernel_once(const char* label,
@@ -191,10 +170,9 @@ void conv2d_wbias_prev(
     CUDNN_CHECK(cudnnSetActivationDescriptor(activation_desc,
                                             CUDNN_ACTIVATION_IDENTITY,
                                             CUDNN_PROPAGATE_NAN,
-                                            0.0));  // ceiling irrelevant for identity
+                                            0.0));
 
-    // If no residual add, zDesc can be y_desc, z = nullptr (or d_Y if accumulating)
-    const cudnnTensorDescriptor_t z_desc = y_desc;  // or create a separate one
+    const cudnnTensorDescriptor_t z_desc = y_desc;
     const void* z = nullptr;
 
     //print_first_n_elements<<<1, 1>>>(d_X, 10);
@@ -220,24 +198,24 @@ void conv2d_wbias_prev(
         y_desc, d_Y
     ));
 
-    printf("Weight first 10:\n");
-    print_first_n_elements<<<1,1>>>(d_proj_q_weight, 10);
-    fflush(stdout);
+    //printf("Weight first 10:\n");
+    //print_first_n_elements<<<1,1>>>(d_proj_q_weight, 10);
+    //fflush(stdout);
 
-    cudaDeviceSynchronize();
+    //cudaDeviceSynchronize();
 
     CUDNN_CHECK(cudnnDestroyActivationDescriptor(activation_desc));
 
-    printf("bias first 10:\n");
-    print_first_n_elements<<<1,1>>>(d_proj_q_bias, 10);
-    fflush(stdout);
+    //printf("bias first 10:\n");
+    //print_first_n_elements<<<1,1>>>(d_proj_q_bias, 10);
+    //fflush(stdout);
 
-    cudaDeviceSynchronize();
+    //cudaDeviceSynchronize();
 
-    printf("y first 10:\n");
-    print_first_n_elements<<<1, 1>>>(d_Y, 10);
-    norm2<<<1, 1>>>(d_Y, size_y);
-    fflush(stdout);
+    //printf("y first 10:\n");
+    //print_first_n_elements<<<1, 1>>>(d_Y, 10);
+    //norm2<<<1, 1>>>(d_Y, size_y);
+    //fflush(stdout);
 }
 
 
@@ -332,10 +310,9 @@ void conv2d_wbias(
     CUDNN_CHECK(cudnnSetActivationDescriptor(activation_desc,
                                             CUDNN_ACTIVATION_IDENTITY,
                                             CUDNN_PROPAGATE_NAN,
-                                            0.0));  // ceiling irrelevant for identity
+                                            0.0)); 
 
-    // If no residual add, zDesc can be y_desc, z = nullptr (or d_Y if accumulating)
-    const cudnnTensorDescriptor_t z_desc = y_desc;  // or create a separate one
+    const cudnnTensorDescriptor_t z_desc = y_desc; 
     const void* z = nullptr;
 
     CUDNN_CHECK(cudnnConvolutionForward(
@@ -344,7 +321,7 @@ void conv2d_wbias(
         x_desc, d_X,
         w_desc, d_proj_q_weight,
         conv_desc,
-        algo,  // your IMPLICIT_GEMM
+        algo, 
         workspace, workspace_bytes,
         &beta,
         y_desc, d_Y
@@ -361,10 +338,10 @@ void conv2d_wbias(
 
     CUDNN_CHECK(cudnnDestroyActivationDescriptor(activation_desc));
 
-    printf("first_10:\n");
-    print_first_n_elements<<<1, 1>>>(d_Y, 10);
-    norm2<<<1, 1>>>(d_Y, size_y);
-    fflush(stdout);
+    //printf("first_10:\n");
+    //print_first_n_elements<<<1, 1>>>(d_Y, 10);
+    //norm2<<<1, 1>>>(d_Y, size_y);
+    //fflush(stdout);
 }
 
 void conv2d_nobias(
@@ -455,10 +432,10 @@ void conv2d_nobias(
         y_desc, d_Y
     ));
 
-    printf("first_10:\n");
-    print_first_n_elements<<<1, 1>>>(d_Y, 10);
-    norm2<<<1, 1>>>(d_Y, size_y);
-    fflush(stdout);
+    //printf("first_10:\n");
+    //print_first_n_elements<<<1, 1>>>(d_Y, 10);
+    //norm2<<<1, 1>>>(d_Y, size_y);
+    //fflush(stdout);
 }
 
 __global__ void scale_kernel(__half* S, float scale, int size) {
@@ -470,15 +447,15 @@ __global__ void scale_kernel(__half* S, float scale, int size) {
 
 void sdotprodattn_forward(
     cublasHandle_t cublas,
-    cudnnHandle_t cudnn,
-    const float* Q, // [B,H,M,D]
-    const float* K, // [B,H,N,D]
-    const float* V, // [B,H,N,D]
-    float* O,       // [B,H,M,D]
+    cudnnHandle_t handle,
+    const float* Q, 
+    const float* K, 
+    const float* V, 
+    float* O,       
     int B, int H, int M, int N, int D,
     float scale
 ) {
-    size_t S_bytes = B*H*M*N*sizeof(float);
+    size_t S_bytes = B * H * M * N * sizeof(float);
     float* S;
     cudaMalloc(&S, S_bytes);
 
@@ -486,7 +463,6 @@ void sdotprodattn_forward(
     float alpha = scale;
     float beta = 0.0f;
 
-    // GEMM: S = Q * K^T
     cublasSgemmStridedBatched(
         cublas,
         CUBLAS_OP_N, CUBLAS_OP_T,
@@ -499,27 +475,26 @@ void sdotprodattn_forward(
         batch_count
     );
 
-    // Softmax along last dim N
     cudnnTensorDescriptor_t S_desc;
-    cudnnCreateTensorDescriptor(&S_desc);
+    CUDNN_CHECK(cudnnCreateTensorDescriptor(&S_desc));
     int dims[4] = {batch_count*M, N, 1, 1};
     int strides[4] = {N, 1, 1, 1};
-    cudnnSetTensorNdDescriptor(S_desc, CUDNN_DATA_FLOAT, 4, dims, strides);
+    CUDNN_CHECK(cudnnSetTensorNdDescriptor(S_desc, CUDNN_DATA_FLOAT, 4, dims, strides));
 
     float softmax_alpha = 1.0f;
     float softmax_beta  = 0.0f;
 
-    cudnnSoftmaxForward(
-        cudnn,
+    CUDNN_CHECK(cudnnSoftmaxForward(
+        handle,
         CUDNN_SOFTMAX_ACCURATE,
         CUDNN_SOFTMAX_MODE_INSTANCE,
         &softmax_alpha,
         S_desc, S,
         &softmax_beta,
         S_desc, S
-    );
+    ));
 
-    cudnnDestroyTensorDescriptor(S_desc);
+    CUDNN_CHECK(cudnnDestroyTensorDescriptor(S_desc));
 
     // GEMM: O = S * V
     alpha = 1.0f;
@@ -813,11 +788,8 @@ int main(void)
     // offsets?
     //c++ / cuda code for this
 
-    // IMPLEMENT THE OFFSET OPS HERE
-
     int Hk = 32;
     int Wk = 32;
-
 
     //int refsize = Hk*Wk*B_x;
     int refsize = 4 * 32 * 32 * 2;
@@ -846,7 +818,7 @@ int main(void)
     grid_sample_kernel<<<gridSize>>>(d_X_new, offset, x_sampled, C_x, H_x, W_x, Hk, Wk);
     CUDA_CHECK(cudaGetLastError());
 
-    norm2<<<1,1>>>(x_sampled, 4 * 2 * 32 * 32);
+    //norm2<<<1,1>>>(x_sampled, 4 * 2 * 32 * 32);
 
     float *d_k;
     CUDA_CHECK(cudaMalloc(&d_k, 4 * 16 * 1024 * sizeof(float)));
@@ -882,51 +854,6 @@ int main(void)
         B_x * n_heads, n_head_channels, H_x * W_x, 1, 1,
         1.0f
     );
-
-    // einsum
-
-    // mat x scalar mul
-
-    // softmax
-
-    // einsum 2
-    //cublasGemmStridedBatchedEx
-
-    // Done!
-
-    //baseline_dat_forward<<<1, 1>>>(d_X, B_x, C_x, H_x, W_x,
-                                   //d_Y, B_y, C_y, H_y, W_y,
-                                    //q_size_h, q_size_w,
-                                    //kv_size_h, kv_size_w,
-                                    //n_heads, n_head_channels,
-                                    //n_groups,
-                                    //stride,
-                                    //ksize,
-                                    //d_conv_offset_0_weight,
-                                    //d_conv_offset_1_weight,
-                                    //d_conv_offset_1_bias,
-                                    //d_conv_offset_3_weight,
-                                    //d_proj_q_weight,
-                                    //d_proj_q_bias,
-                                    //d_proj_k_weight,
-                                    //d_proj_k_bias,
-                                    //d_proj_v_weight,
-                                    //d_proj_v_bias,
-                                    //d_proj_out_weight,
-                                    //d_proj_out_bias);
-
-    //run_kernel_once("d_baseline_dat_forward",
-    //                d_baseline_dat_forward,
-    //                1, 1,
-    //                d_X,
-    //                B_x, C_x, H_x, W_x);
-
-    //benchmark_kernel("d_baseline_dat_forward",
-    //                d_baseline_dat_forward,
-    //                1, 1,
-    //                d_X,
-    //                B_x, C_x, H_x, W_x,
-    //                3, 20);
 
     // obliterate cudnn
     cudnnDestroy(handle);

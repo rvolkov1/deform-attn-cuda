@@ -8,28 +8,39 @@
 #include <cstdlib>
 #include "cnpy.h"
 
-#define CUDA_CHECK(call) do {                                        \
-    cudaError_t err__ = (call);                                      \
-    if (err__ != cudaSuccess) {                                      \
-        fprintf(stderr, "CUDA error %s:%d: %s\n",                    \
-                __FILE__, __LINE__, cudaGetErrorString(err__));      \
-        std::exit(EXIT_FAILURE);                                     \
-    }                                                                \
+#define CUDA_CHECK(call)                                                      \
+    do {                                                                      \
+        cudaError_t err__ = (call);                                           \
+        if (err__ != cudaSuccess) {                                           \
+            fprintf(stderr, "CUDA error %s:%d: %s\n",                         \
+                    __FILE__, __LINE__, cudaGetErrorString(err__));           \
+            exit(EXIT_FAILURE);                                               \
+        }                                                                     \
+    } while (0)
+
+#define CUDNN_CHECK(call)                                                  \
+do {                                                                       \
+    cudnnStatus_t status = call;                                           \
+    if (status != CUDNN_STATUS_SUCCESS) {                                  \
+        fprintf(stderr, "cuDNN Error: %s at %s:%d\n",                      \
+                cudnnGetErrorString(status), __FILE__, __LINE__);          \
+        exit(EXIT_FAILURE);                                                \
+    }                                                                      \
 } while (0)
 
 __global__ void layernorm_nchw_over_c_nobias_f32(
-    const float* __restrict__ x,    // [B,Cg,H,W]
-    const float* __restrict__ gamma,// [Cg] or nullptr
-    float* __restrict__ y,          // [B,Cg,H,W]
+    const float* __restrict__ x,    
+    const float* __restrict__ gamma,
+    float* __restrict__ y,          
     int B, int Cg, int H, int W,
     float eps)
 {
-    int idx = blockIdx.x;  // idx in [0, B*H*W)
+    int idx = blockIdx.x;  
     int HW  = H * W;
     if (idx >= B * HW) return;
 
     int b = idx / HW;
-    int s = idx - b * HW;  // s = h*W + w
+    int s = idx - b * HW;  
 
     const float* xb = x + (b * Cg * HW) + s;
     float*       yb = y + (b * Cg * HW) + s;
@@ -64,7 +75,7 @@ __global__ void layernorm_nchw_over_c_nobias_f32(
     for (int c = threadIdx.x; c < Cg; c += blockDim.x) {
         float v = (xb[c * HW] - mean) * inv_std;
         float g = (gamma ? gamma[c] : 1.0f);
-        yb[c * HW] = v * g; // no beta
+        yb[c * HW] = v * g;
     }
 }
 
@@ -77,7 +88,7 @@ __global__ void gelu_tanh_f32_kernel(const float* __restrict__ x,
 
     float v = x[i];
     const float kAlpha = 0.7978845608028654f; // sqrt(2/pi)
-    const float kBeta  = 0.044715f;
+    const float kBeta  = 0.044715f; // from pytorch impl
 
     float v3 = v * v * v;
     float t  = kAlpha * (v + kBeta * v3);
@@ -204,14 +215,12 @@ __device__ void d_layernorm_C(
     int CHW = C * HW;
     int idx = h * W + w;
 
-    // 1) mean
     float mean = 0.0f;
     for (int c = 0; c < C; ++c) {
         mean += x[b * CHW + c * HW + idx];
     }
     mean /= C;
 
-    // 2) variance
     float var = 0.0f;
     for (int c = 0; c < C; ++c) {
         float v = x[b * CHW + c * HW + idx] - mean;
@@ -221,7 +230,6 @@ __device__ void d_layernorm_C(
 
     float inv_std = rsqrtf(var + eps);
 
-    // 3) normalize + affine
     for (int c = 0; c < C; ++c) {
         int off = b * CHW + c * HW + idx;
         y[off] = gamma[c] * (x[off] - mean) * inv_std + beta[c];

@@ -17,6 +17,7 @@ nvcc -O3 -arch=sm_75 dat_cuda/main.cu cnpy.o \
   -lcudnn -lz \
   -lcublas \
   -Xlinker -rpath -Xlinker $CUDNN_HOME/lib \
+  -diag-suppress 177 \
   -o dat_cuda/exe
 
 ./dat_cuda/exe
