@@ -21,7 +21,7 @@ The unit tests for Layernorm and GELU functions are in a seperate folder. To run
 ```bash
 bash ln_run_cu.sh test1
 ```
-Each of these testcases will repeatedly run some variations of the layernorm and GELU functions (unfused with no shuffling, unfused with shuffle, fused and optimized) on a single testcase to measure performance, and will also compare the outputs with a ground truth value computed from the PyTorch implementation of layernorm and GELU to test for accuracy.
+Each of these testcases will repeatedly run some variations of the layernorm and GELU functions (unfused with no shuffling, unfused with shuffle, fused and optimized) on a single testcase to measure performance, and will also compare the outputs with a ground truth value computed from the PyTorch implementation of layernorm and GELU to test for correctness.
 
 ## Environment setup
 All of this code was built and tested while SSH'd into a CSE Labs machine, so make sure you are SSH'd into a cuda machine. We used `csel-cuda-03.cselabs.umn.edu`.
